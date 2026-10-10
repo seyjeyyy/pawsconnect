@@ -1,0 +1,3 @@
+export interface Product {id:string;slug:string;name:string;description:string;category_id:string;price_centavos:number;stock_quantity:number;reserved_quantity?:number;image_url:string;is_sample?:boolean;product_categories?:{name:string};product_images?:{image_url:string}[];product_variants?:{id:string;name:string;price_centavos:number;stock_quantity:number}[];specifications?:Record<string,string>}
+export interface Pet {id:string;name:string;species:string;breed:string;size:string;age_months:number;sex:string;description:string;image_url:string;status:string;is_sample?:boolean;energy_level?:number|string;temperament?:string[];pet_behavior_profiles?:any}
+export interface Category {id:string;name:string;slug:string}
