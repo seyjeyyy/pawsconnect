@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
+import { TourProvider } from './components/tour/Tour';
 import Home from './pages/Home';
 import { AdoptPage, PetPage } from './pages/Adoption';
 import { AuthCallbackPage, NotFoundPage, PrivacyPage, TermsPage } from './pages/Info';
@@ -25,6 +26,7 @@ const Loading = () => <div className="page container" role="status" aria-label="
 
 export default function App() {
   return (
+    <TourProvider>
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -59,5 +61,6 @@ export default function App() {
         </Route>
       </Routes>
     </Suspense>
+    </TourProvider>
   );
 }

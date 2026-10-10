@@ -1,0 +1,50 @@
+/* Guided tour. Unlayered so it sits above every page style; tokens come from styles.css. */
+.tour { position: fixed; inset: 0; z-index: 300; }
+.tour-backdrop { position: absolute; inset: 0; transition: background-color 0.35s ease; }
+.tour-backdrop-dim { background: rgb(21 44 73 / 0.62); }
+
+/* The dimming is the spotlight's own oversized shadow, so the lit area is a true cut-out
+   that can glide and resize between targets. */
+.tour-spotlight { position: absolute; border-radius: 16px; pointer-events: none; box-shadow: 0 0 0 9999px rgb(21 44 73 / 0.62), 0 0 0 3px var(--orange), 0 0 0 9px rgb(249 115 22 / 0.28); animation: tour-fade 0.3s ease both; }
+/* While moving to a new target the box eases across; once settled it tracks scrolling exactly. */
+.tour-gliding .tour-spotlight { transition: top 0.45s cubic-bezier(0.22, 1, 0.36, 1), left 0.45s cubic-bezier(0.22, 1, 0.36, 1), width 0.45s cubic-bezier(0.22, 1, 0.36, 1), height 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+
+.tour-card { position: absolute; width: min(380px, calc(100vw - 32px)); background: var(--white); border-radius: 20px; box-shadow: 0 24px 60px -18px rgb(21 44 73 / 0.55), 0 0 0 1px rgb(21 44 73 / 0.06); overflow: hidden; transition: top 0.45s cubic-bezier(0.22, 1, 0.36, 1), left 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease; }
+.tour-progress { height: 4px; background: var(--cream-deep); }
+.tour-progress span { display: block; height: 100%; background: var(--orange); border-radius: 0 4px 4px 0; transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+.tour-content { padding: 1.1rem 1.25rem 0.25rem; animation: tour-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.tour-head { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.75rem; }
+.tour-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 12px; background: var(--tint); color: var(--orange); }
+.tour-count { flex: 1; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.tour-close { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; color: var(--muted); transition: background-color 0.15s, color 0.15s; }
+.tour-close:hover { background: var(--cream-deep); color: var(--navy); }
+.tour-content h2 { font-size: 1.2rem; line-height: 1.25; }
+.tour-content p { margin-top: 0.45rem; font-size: 0.94rem; line-height: 1.6; color: #57493d; }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 1rem 1.25rem 1.15rem; }
+.tour-actions .btn { min-height: 42px; padding: 0.55rem 1.1rem; }
+
+.tour-link { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 650; }
+.announcement .tour-link { color: var(--white); padding: 0.1rem 0.7rem; border: 1px solid rgb(255 255 255 / 0.35); border-radius: 999px; transition: background-color 0.15s; }
+.announcement .tour-link:hover { background: rgb(255 255 255 / 0.14); }
+.announcement-links { display: inline-flex; align-items: center; gap: 1rem; }
+.footer .tour-link { display: flex; padding: 0.3rem 0; color: #c5d2e2; font-size: 0.92rem; font-weight: 400; }
+.footer .tour-link:hover { color: var(--white); text-decoration: underline; text-underline-offset: 3px; }
+
+.tour-invite { position: fixed; left: 1.25rem; bottom: 1.25rem; z-index: 60; display: flex; align-items: flex-start; gap: 0.8rem; width: min(360px, calc(100vw - 2.5rem)); padding: 1rem 1rem 1rem 1.1rem; background: var(--white); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 44px -18px rgb(21 44 73 / 0.5); animation: tour-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.tour-invite strong { color: var(--navy); }
+.tour-invite p { font-size: 0.9rem; color: var(--muted); }
+.tour-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-top: 0.7rem; }
+.tour-invite .btn { min-height: 40px; padding: 0.5rem 1rem; }
+.tour-invite .tour-close { margin: -0.35rem -0.35rem 0 auto; }
+
+@keyframes tour-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes tour-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 560px) {
+  .announcement-links > a { display: none; }
+  .tour-actions { padding-bottom: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight, .tour-card, .tour-progress span, .tour-backdrop { transition: none !important; }
+  .tour-content, .tour-invite, .tour-spotlight { animation: none !important; }
+}
