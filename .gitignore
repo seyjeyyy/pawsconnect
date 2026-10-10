@@ -11,3 +11,8 @@ playwright-report/
 supabase/.temp/
 supabase/.branches/
 *.tsbuildinfo
+.vercel
+
+.vercel
+.env*
+api/package-lock.json

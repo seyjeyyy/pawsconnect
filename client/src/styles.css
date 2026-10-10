@@ -477,7 +477,10 @@
   .location-picker { display: grid; gap: 0.9rem; min-width: 0; padding: 1rem; border: 1px solid var(--line-strong); border-radius: 14px; }
   .location-picker legend { display: inline-flex; align-items: center; gap: 0.4rem; padding-inline: 0.4rem; font-weight: 700; color: var(--navy); }
   .location-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.6rem; }
-  .location-map { height: 260px; border-radius: 12px; overflow: hidden; background: var(--cream-deep); }
+  /* isolation keeps Leaflet's internal z-indexes (up to 1000) underneath the sticky header and modals. */
+  .location-map { height: 300px; border-radius: 12px; overflow: hidden; background: var(--cream-deep); isolation: isolate; z-index: 0; }
+  .location-pin span { display: block; width: 28px; height: 28px; background: var(--orange); border: 3px solid var(--white); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 3px 8px rgb(21 44 73 / 0.45); }
+  .location-pin span::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--white); }
   .map-placeholder { display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: var(--cream); border: 1px dashed var(--line-strong); border-radius: 12px; font-size: 0.9rem; color: var(--muted); }
   .map-placeholder svg { color: var(--orange); flex: none; }
   .map-placeholder small { display: block; }

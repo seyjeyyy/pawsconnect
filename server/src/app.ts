@@ -2,7 +2,7 @@ import cors from 'cors';
 import express, { Router } from 'express';
 import helmet from 'helmet';
 import { env, integrations } from './config/env.js';
-import { apiLimiter, authLimiter, formLimiter } from './middleware/rateLimit.js';
+import { apiLimiter, authLimiter, formLimiter, mapsLimiter } from './middleware/rateLimit.js';
 import { adoptionRouter } from './modules/adoption/routes.js';
 import { adminRouter } from './modules/analytics/admin.js';
 import { supportRouter } from './modules/donations/routes.js';
@@ -39,6 +39,7 @@ export function createApp() {
   api.use(['/contact', '/newsletter'], formLimiter);
   // Stray reports may be anonymous, so they get the same abuse limit as the other public forms.
   api.post('/stray-reports', formLimiter);
+  api.use('/maps', mapsLimiter);
 
   // Public and optionally-authenticated routers come first. Routers that begin
   // with `use(authenticate)` reject every request that reaches them, so they

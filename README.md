@@ -9,6 +9,8 @@ Pet supplies e-commerce, AI-assisted adoption matching, stray rescue reporting, 
 | Web (`client/`) | React 19, TypeScript, Vite, Tailwind CSS 4, React Router, TanStack Query, React Hook Form, Zod |
 | API (`server/`) | Node.js, Express 5, TypeScript, Zod |
 | Data (`supabase/`) | Supabase Postgres, Auth, Storage, Realtime, Row Level Security, PostGIS |
+| Payments | Stripe Checkout with signature-verified webhooks |
+| Maps | Leaflet with OpenStreetMap tiles; Nominatim address search and OSRM routing behind a provider interface |
 | Tests (`tests/`) | Vitest (unit, API, database on in-process Postgres + PostGIS), Playwright (browser) |
 
 ## Run it
@@ -50,9 +52,18 @@ Each is off until its keys are set in `server/.env`; the app reports the feature
 
 | Integration | Variables | Without it |
 | --- | --- | --- |
-| PayMongo (sandbox or live) | `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, `PAYMONGO_LIVE_MODE`, `PAYMONGO_PAYMENT_METHODS` | Checkout stops with "payments are not configured". No payment is ever marked successful without a verified webhook. Register the webhook at `POST /api/webhooks/paymongo`. |
-| Google Maps | `GOOGLE_MAPS_SERVER_KEY` (server), `VITE_GOOGLE_MAPS_API_KEY` (client) | Address search and the interactive map are hidden; coordinates can be typed manually. |
+| Stripe (test or live) | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Checkout stops with "payments are not configured". No payment is ever marked successful without a verified webhook. See **Stripe setup** below. |
+| Your own map services | `NOMINATIM_URL`, `OSRM_URL` | Maps need no key. Address search and routing use the public OpenStreetMap services, which are for light use only; set these to a hosted or self-hosted instance before real traffic. |
 | Resend | `RESEND_API_KEY`, `RESEND_FROM` | No transactional email. |
+
+### Stripe setup
+
+1. In the Stripe dashboard (test mode), copy the secret key (`sk_test_...`) into `STRIPE_SECRET_KEY`.
+2. For local development, install the Stripe CLI and run `stripe listen --forward-to localhost:4000/api/webhooks/stripe`. It prints a signing secret (`whsec_...`); put that in `STRIPE_WEBHOOK_SECRET` and restart the API.
+3. For a deployed API, add a webhook endpoint for `https://<your-api>/api/webhooks/stripe` with the events `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`, and use that endpoint's signing secret.
+4. Pay with a Stripe test card such as `4242 4242 4242 4242`, any future expiry and any CVC.
+
+Amounts are charged in Philippine pesos. Stripe enforces a minimum charge (roughly the equivalent of US$0.50), so very small donations will be declined by the provider.
 
 Service zones are not pre-loaded. An administrator must add verified WGS84 boundaries (GeoJSON) under **Service zones** before any location is reported as within coverage.
 
@@ -75,8 +86,28 @@ Service zones are not pre-loaded. An administrator must add verified WGS84 bound
 
 See [docs/STATUS.md](docs/STATUS.md) for what is verified, what is written but not yet verified end to end, and known gaps.
 
-## Deployment outline
+## Deployment (Vercel)
 
-- **Web:** Vercel, root `client/`, build `npm run build`, output `dist`. Set the `VITE_` variables and point `VITE_API_URL` at the API.
-- **API:** any Node host. `npm run build -w server` then `npm start`. Set `CLIENT_URL` to the web origin (used for CORS and email links) and `TRUST_PROXY_HOPS` to the number of proxies in front of it.
-- **Database:** managed Supabase project with the migrations applied.
+Live at https://pawsconnect-one.vercel.app. One Vercel project serves both parts: the web app as static files from `client/dist`, and the Express API as a serverless function (`api/index.ts`) that receives every `/api/*` request. Routing is in `vercel.json`.
+
+To redeploy after changes:
+
+```bash
+npx vercel build --prod
+npx vercel deploy --prebuilt --prod
+```
+
+Environment variables are set in the Vercel project (Settings → Environment Variables), not in the repository: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `CLIENT_URL` (the site address, used for CORS, email links and payment redirects), `TRUST_PROXY_HOPS=1`, and for the web build `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=/api`.
+
+The deployed site has its own Stripe webhook endpoint (`/api/webhooks/stripe`) with its own signing secret, separate from the one `stripe listen` uses locally.
+
+Things that differ from running locally:
+
+- **Scheduled jobs do not run on serverless.** The in-process scheduler only runs under `npm run dev` / `npm start`. Schedule the expiry functions in the database instead (Supabase SQL editor, after enabling the `pg_cron` extension):
+
+  ```sql
+  select cron.schedule('expire-order-reservations', '* * * * *', 'select public.expire_order_reservations()');
+  select cron.schedule('expire-pet-reservations', '*/5 * * * *', 'select public.expire_pet_reservations()');
+  ```
+- **Rate limits are per server instance**, so they are looser than on a single long-running server. Use a shared store before relying on them under real traffic.
+- Add the site address to Supabase → Authentication → URL Configuration (site URL, plus `/auth/callback` and `/auth/reset` as redirect URLs), or email links will point at localhost.

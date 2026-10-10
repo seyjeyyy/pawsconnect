@@ -4,9 +4,18 @@ Last updated 2026-10-10. "Verified" means it was run and observed working, not j
 
 Current totals: 80 unit, API and database tests and 12 browser tests pass; both workspaces typecheck and build.
 
-## The one thing that is not verified anywhere
+## Verified live
 
-**Nothing has been run against a live Supabase project or the PayMongo sandbox**, because no credentials were available. Database behaviour is tested on a real in-process Postgres with PostGIS, and the web app is tested in a browser in preview mode. What sits between them — the Express routes calling Supabase over HTTP, Supabase Auth, Storage uploads, and PayMongo checkout and webhooks — has been checked by reading, by type checking and by the contract test below, but never executed. Expect to find and fix issues there on first connection.
+Run on 2026-10-10 against the connected Supabase project and Stripe test mode, with temporary data that was removed afterwards:
+
+- Sign-in, profile, addresses, every account list, role gating and the shelter workspace reads.
+- A complete purchase: staff create a delivery zone and a product through the admin API; a buyer saves an address, gets a quote (2 x P250 + P80 delivery = P580), places an order and pays on Stripe's hosted page with the test card.
+- Stock is reserved at order time and deducted only when the signed Stripe webhook arrives. The redirect back to the site does not mark anything paid.
+- The payment is recorded with Stripe's payment id, the buyer is notified, the sale appears in workspace analytics, a paid order cannot be paid twice, and staff can advance it to processing.
+
+Not yet exercised live: email verification and password reset links, Storage uploads, discount codes, cancellation and expiry over HTTP, refunds, and the adoption, rescue, transport and donation workflows. Those are covered by database tests where noted below, not by a live run.
+
+Stripe is in test mode. The connected Stripe account is not activated for real charges.
 
 ## Phase 1 — Foundation: verified
 
@@ -39,9 +48,13 @@ Verified in `tests/database/commerce.test.ts`:
 
 Also done: checkout, account and admin forms aligned with the API; stock adjustment added to the shelter workspace; a scheduled job releases expired order and pet reservations.
 
-Not verified: the checkout flow over HTTP with a real account, and PayMongo sandbox payment and webhook delivery.
+The checkout flow over HTTP with a Stripe test payment and webhook delivery was verified live (see above).
 
 Not built: product variants in the storefront UI (the database and checkout function support them), image upload for products (an image URL is entered), refunds UI, shipment tracking entry, the server-side cart (the cart is stored in the browser; server cart endpoints exist but are unused).
+
+## Maps: verified
+
+The location picker uses Leaflet with OpenStreetMap tiles and needs no key. Verified in a browser against the live services: tiles load, clicking or dragging sets the coordinates, typed coordinates move the pin, address search (Nominatim) and driving distance (OSRM) return real results. The public OpenStreetMap endpoints are for light use; address search is throttled to one request per second and rate-limited per visitor. The route preview shows distance and time; it does not draw the route on a map yet.
 
 ## Phases 3–6 — written and aligned, not verified
 
@@ -49,7 +62,8 @@ Routes, pages, tables and workflow functions exist for adoption, matchmaking, re
 
 Known gaps:
 
-- The shelter workspace uses generic record tables and status forms. There is no map-based zone editor (zones are pasted as GeoJSON), rescue map or transport map.
+- The shelter workspace uses generic record tables and status forms. There is no map-based zone editor (zones are pasted as GeoJSON), rescue map or transport map. Leaflet is now in place to build these on.
+- The browser tests assume preview mode and fail on a machine with Supabase configured; they need their own preview-mode server.
 - Photo upload for stray reports and adoption documents is not in the forms (the signed-upload endpoint exists).
 - Notifications are stored and listed. Realtime subscription, email (Resend), SMS and push are not wired.
 - Recurring donations are not offered; provider support has not been confirmed.

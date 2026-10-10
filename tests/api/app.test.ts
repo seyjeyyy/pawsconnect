@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../../server/src/app';
-import { verifyPaymongoSignature } from '../../server/src/integrations/paymongo';
+import { verifyStripeSignature } from '../../server/src/integrations/stripe';
 
 // No Supabase credentials are present under test, so this exercises the API's
 // preview mode: public catalog works, everything that needs an account refuses.
@@ -12,7 +12,7 @@ describe('API foundation', () => {
   it('reports health and which integrations are configured, without secrets', async () => {
     const res = await request(app).get('/api/health').expect(200);
     expect(res.body.data.status).toBe('ok');
-    expect(res.body.data.integrations).toEqual({ supabase: false, paymongo: false, maps: false, resend: false });
+    expect(res.body.data.integrations).toEqual({ supabase: false, stripe: false, resend: false });
     expect(res.headers['x-powered-by']).toBeUndefined();
     expect(res.headers['x-content-type-options']).toBe('nosniff');
   });
@@ -73,31 +73,38 @@ describe('protected routes', () => {
   });
 });
 
-describe('PayMongo webhook verification', () => {
-  const secret = 'whsk_test_secret';
-  const body = Buffer.from(JSON.stringify({ data: { id: 'evt_1', type: 'event' } }));
+describe('Stripe webhook verification', () => {
+  const secret = 'whsec_test_secret';
+  const body = Buffer.from(JSON.stringify({ id: 'evt_1', type: 'checkout.session.completed', livemode: false, data: { object: { id: 'cs_test_1' } } }));
   const sign = (timestamp: number, payload = body, key = secret) => createHmac('sha256', key).update(`${timestamp}.`).update(payload).digest('hex');
   const now = 1_800_000_000_000;
   const t = now / 1000;
 
-  it('accepts a correctly signed test-mode payload', () => {
-    expect(verifyPaymongoSignature(body, `t=${t},te=${sign(t)},li=`, secret, false, now)).toBe(true);
+  it('accepts a correctly signed payload', () => {
+    expect(verifyStripeSignature(body, `t=${t},v1=${sign(t)}`, secret, now)).toBe(true);
   });
-  it('rejects a tampered body, a wrong secret, and a missing header', () => {
-    expect(verifyPaymongoSignature(Buffer.from('{"data":{"id":"evt_2"}}'), `t=${t},te=${sign(t)}`, secret, false, now)).toBe(false);
-    expect(verifyPaymongoSignature(body, `t=${t},te=${sign(t, body, 'other')}`, secret, false, now)).toBe(false);
-    expect(verifyPaymongoSignature(body, undefined, secret, false, now)).toBe(false);
+  it('accepts when any one of several v1 signatures matches (secret rotation)', () => {
+    expect(verifyStripeSignature(body, `t=${t},v1=${'0'.repeat(64)},v1=${sign(t)}`, secret, now)).toBe(true);
+  });
+  it('rejects a tampered body, a wrong secret, a malformed or missing header', () => {
+    expect(verifyStripeSignature(Buffer.from('{"id":"evt_2"}'), `t=${t},v1=${sign(t)}`, secret, now)).toBe(false);
+    expect(verifyStripeSignature(body, `t=${t},v1=${sign(t, body, 'whsec_other')}`, secret, now)).toBe(false);
+    expect(verifyStripeSignature(body, `t=${t},v0=${sign(t)}`, secret, now)).toBe(false);
+    expect(verifyStripeSignature(body, 'garbage', secret, now)).toBe(false);
+    expect(verifyStripeSignature(body, undefined, secret, now)).toBe(false);
   });
   it('rejects a replayed signature older than five minutes', () => {
     const old = t - 301;
-    expect(verifyPaymongoSignature(body, `t=${old},te=${sign(old)}`, secret, false, now)).toBe(false);
-  });
-  it('does not accept a test signature in live mode', () => {
-    expect(verifyPaymongoSignature(body, `t=${t},te=${sign(t)},li=`, secret, true, now)).toBe(false);
+    expect(verifyStripeSignature(body, `t=${old},v1=${sign(old)}`, secret, now)).toBe(false);
   });
   it('refuses unsigned webhook requests over HTTP', async () => {
-    const res = await request(app).post('/api/webhooks/paymongo').set('Content-Type', 'application/json').send('{"data":{}}');
+    const res = await request(app).post('/api/webhooks/stripe').set('Content-Type', 'application/json').send('{"id":"evt_1"}');
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body.data).toBeUndefined();
+  });
+  it('no longer exposes the old PayMongo webhook path', async () => {
+    const res = await request(app).post('/api/webhooks/paymongo').set('Content-Type', 'application/json').send('{}');
+    expect(res.body.data).toBeUndefined();
+    expect(res.status).toBeGreaterThanOrEqual(400);
   });
 });
