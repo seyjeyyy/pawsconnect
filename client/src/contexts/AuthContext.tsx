@@ -3,15 +3,15 @@ import type {User} from '@supabase/supabase-js';
 import {useQueryClient} from '@tanstack/react-query';
 import {supabase} from '../lib/supabase';
 import {api} from '../lib/api';
-type Auth = {user:User|null;roles:string[];configured:boolean;loading:boolean;signIn:(email:string,password:string)=>Promise<void>;signUp:(name:string,email:string,password:string)=>Promise<void>;signOut:()=>Promise<void>;resetPassword:(email:string)=>Promise<void>;updatePassword:(password:string)=>Promise<void>};
+type Auth = {user:User|null;roles:string[];rolesLoading:boolean;configured:boolean;loading:boolean;signIn:(email:string,password:string)=>Promise<void>;signUp:(name:string,email:string,password:string)=>Promise<void>;signOut:()=>Promise<void>;resetPassword:(email:string)=>Promise<void>;updatePassword:(password:string)=>Promise<void>};
 const Context=createContext<Auth|null>(null);
 function client(){if(!supabase)throw new Error('Accounts are not connected yet. Configure Supabase to enable secure sign-in.');return supabase;}
 export function AuthProvider({children}:{children:ReactNode}){
- const [user,setUser]=useState<User|null>(null),[roles,setRoles]=useState<string[]>([]),[loading,setLoading]=useState(!!supabase);const queryClient=useQueryClient();const previousUserId=useRef<string|undefined>(undefined);
+ const [user,setUser]=useState<User|null>(null),[roles,setRoles]=useState<string[]>([]),[loading,setLoading]=useState(!!supabase);const queryClient=useQueryClient();const [rolesFor,setRolesFor]=useState<string|undefined>(undefined);const previousUserId=useRef<string|undefined>(undefined);
  useEffect(()=>{if(!supabase)return;let active=true;supabase.auth.getSession().then(({data})=>{if(active){setUser(data.session?.user||null);setLoading(false);}});const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setUser(session?.user||null);setLoading(false);});return()=>{active=false;data.subscription.unsubscribe();};},[]);
  // Cached data belongs to one account: reset it when the signed-in user changes. Not on mount, and never clear(), which would orphan queries that are already in flight.
- useEffect(()=>{setRoles([]);if(previousUserId.current!==user?.id){if(previousUserId.current!==undefined||user)void queryClient.resetQueries();previousUserId.current=user?.id;}if(!user)return;let active=true;api<{roles:string[]}>('/auth/me').then(result=>{if(active)setRoles(result.roles||[]);}).catch(()=>{});return()=>{active=false;};},[user?.id,queryClient]);
- const value:Auth={user,roles,loading,configured:!!supabase,
+ useEffect(()=>{setRoles([]);if(previousUserId.current!==user?.id){if(previousUserId.current!==undefined||user)void queryClient.resetQueries();previousUserId.current=user?.id;}if(!user)return;let active=true;const id=user.id;api<{roles:string[]}>('/auth/me').then(result=>{if(active)setRoles(result.roles||[]);}).catch(()=>{}).finally(()=>{if(active)setRolesFor(id);});return()=>{active=false;};},[user?.id,queryClient]);
+ const value:Auth={user,roles,loading,rolesLoading:!!user&&rolesFor!==user.id,configured:!!supabase,
  async signIn(email,password){const {error}=await client().auth.signInWithPassword({email,password});if(error)throw error;},
  async signUp(name,email,password){const {error}=await client().auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:`${location.origin}/auth/callback`}});if(error)throw error;},
  async signOut(){const {error}=await client().auth.signOut();if(error)throw error;setRoles([]);},

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Compass, Heart, HeartHandshake, LayoutDashboard, MapPin, PawPrint, ShieldCheck, ShoppingBag, Sparkles, Truck, UserRound, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { isOperational } from '../../lib/roles';
 import './tour.css';
 
 type Step = {
@@ -13,6 +14,7 @@ type Step = {
   title: string;
   body: string;
   staffOnly?: boolean;
+  customerOnly?: boolean;
 };
 
 const steps: Step[] = [
@@ -25,8 +27,8 @@ const steps: Step[] = [
   { route: '/rescue', targets: ['.location-map', '.location-picker'], icon: MapPin, title: 'Report a stray on the map', body: 'Describe the animal, then click the map or search an address to drop a pin. You can check whether the spot is inside the shelter’s rescue coverage. Staff verify every report before any team is sent.' },
   { route: '/transport', targets: ['.tabs', '.service-form'], icon: Truck, title: 'Safe journeys for pets', body: 'Request shelter-managed transport within approved Bulacan zones and receive a quotation from staff. Outside coverage, switch to an alternative request and the shelter will assess the arrangement.' },
   { route: '/donate', targets: ['.donation-amounts', '.service-form'], icon: HeartHandshake, title: 'Support the shelter', body: 'Give a one-time amount or offer supplies in kind. Donations are recorded separately from shop sales, and a monetary gift is confirmed only after the payment is verified.' },
-  { route: '/account', targets: ['.account-sidebar', '.account-gate'], icon: UserRound, title: 'Your account, all in one place', body: 'Track orders, payments, adoption applications, rescue reports, transport requests and donations here, and keep your delivery addresses and profile up to date.' },
-  { route: '/admin', targets: ['.account-sidebar'], icon: LayoutDashboard, staffOnly: true, title: 'The shelter workspace', body: 'For shelter staff: manage products and stock, review adoptions, verify rescue reports, quote and assign transport, set service zones, and see sales and donations reported separately.' },
+  { route: '/account', targets: ['.account-sidebar', '.account-gate'], icon: UserRound, customerOnly: true, title: 'Your account, all in one place', body: 'Track orders, payments, adoption applications, rescue reports, transport requests and donations here, and keep your delivery addresses and profile up to date.' },
+  { route: '/admin', targets: ['.account-sidebar'], icon: LayoutDashboard, staffOnly: true, title: 'The shelter workspace', body: 'Shelter personnel work here, and each role sees only its own tools: staff manage the store, adoptions, rescue and transport; veterinarians keep health records; rescue personnel and drivers see the jobs assigned to them.' },
   { route: '/', icon: PawPrint, title: 'You’re all set', body: 'That’s the whole platform. You can replay this tour any time from “Take the tour” at the top of the page or in the footer.' },
 ];
 
@@ -50,8 +52,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const { roles } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const isStaff = roles.some(role => role === 'administrator' || role === 'shelter_staff');
-  const sequence = useMemo(() => steps.filter(step => !step.staffOnly || isStaff), [isStaff]);
+  const operational = isOperational(roles);
+  const sequence = useMemo(() => steps.filter(step => operational ? !step.customerOnly : !step.staffOnly), [operational]);
 
   const [index, setIndex] = useState<number | null>(null);
   const [box, setBox] = useState<Box | null>(null);

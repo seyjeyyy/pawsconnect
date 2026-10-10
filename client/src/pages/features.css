@@ -159,6 +159,7 @@
   .account-identity div { min-width: 0; }
   .account-identity strong { display: block; color: var(--navy); }
   .account-identity small { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 0.78rem; color: var(--muted); }
+  .role-badge { justify-self: start; }
   .admin-identity { display: grid; gap: 0.4rem; justify-items: start; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
   .dashboard-main { display: grid; gap: 1.25rem; align-content: start; min-width: 0; }
   .dashboard-main > .btn { justify-self: start; }

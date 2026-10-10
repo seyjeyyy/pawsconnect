@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../../config/supabase.js';
 import { authenticate } from '../../middleware/auth.js';
 import { assertDb } from '../../utils/errors.js';
-import { money } from '../../utils/validation.js';
+import { money, uuid } from '../../utils/validation.js';
 export const supportRouter = Router();
 supportRouter.use(authenticate);
 supportRouter.post('/donations', async (req, res) => {
@@ -19,6 +19,12 @@ supportRouter.get('/donations/mine', async (req, res) => {
 supportRouter.post('/volunteers', async (req, res) => {
   const input = z.object({ motivation: z.string().min(20).max(3000), skills: z.array(z.string().min(1).max(100)).max(20), availability: z.record(z.unknown()) }).strict().parse(req.body);
   res.status(201).json({ data: assertDb(await db().from('volunteer_profiles').insert({ ...input, user_id: req.actor!.id }).select().single()) });
+});
+// A volunteer reports progress on a task assigned to them. Scoped to the owner; finished tasks stay finished.
+supportRouter.patch('/volunteers/tasks/:id', async (req, res) => {
+  const { status } = z.object({ status: z.enum(['in_progress', 'completed']) }).strict().parse(req.body);
+  const data = assertDb(await db().from('volunteer_tasks').update({ status }).eq('id', uuid.parse(req.params.id)).eq('volunteer_id', req.actor!.id).in('status', status === 'in_progress' ? ['assigned'] : ['assigned', 'in_progress']).select().single());
+  res.json({ data });
 });
 supportRouter.get('/volunteers/mine', async (req, res) => {
   const profile = assertDb(await db().from('volunteer_profiles').select('*').eq('user_id', req.actor!.id).maybeSingle());

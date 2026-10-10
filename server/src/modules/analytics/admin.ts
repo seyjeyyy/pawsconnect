@@ -1,12 +1,36 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { db } from '../../config/supabase.js';
-import { authenticate, authorize, staffRoles } from '../../middleware/auth.js';
+import { authenticate, authorize, isStaff } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
 
 export const adminRouter = Router();
-adminRouter.use(authenticate, authorize(...staffRoles));
+// Administrators and shelter staff reach every route in this router. Field
+// roles reach only their own work: the resources listed under `read` (the list
+// handler further narrows rescue and transport to the actor's own assignments)
+// and the actions listed under `write`. The database functions behind those
+// actions check again that the actor is the assigned person.
+const recordId = '[0-9a-f-]{36}';
+const fieldAccess: Record<string, { read: string[]; write: RegExp[] }> = {
+  veterinarian: { read: ['pets', 'health', 'intake'], write: [/^POST \/health$/, new RegExp(`^PATCH /pets/${recordId}/behavior$`)] },
+  rescue_personnel: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
+  // Approved volunteers can be assigned to a rescue by staff.
+  volunteer: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
+  shelter_driver: { read: ['transport'], write: [new RegExp(`^PATCH /transport/${recordId}/status$`)] },
+};
+export const workspaceAccess: RequestHandler = (req, _res, next) => {
+  const roles = req.actor?.roles ?? [];
+  if (isStaff(roles)) { next(); return; }
+  const grants = roles.flatMap(role => fieldAccess[role] ? [fieldAccess[role]] : []);
+  const path = req.path.replace(/\/+$/, '');
+  const allowed = req.method === 'GET'
+    ? grants.some(grant => grant.read.includes(path.slice(1)))
+    : grants.some(grant => grant.write.some(pattern => pattern.test(`${req.method} ${path}`)));
+  if (!allowed) throw new ApiError(403, 'FORBIDDEN', 'This action requires an authorized shelter role.');
+  next();
+};
+adminRouter.use(authenticate, workspaceAccess);
 const resources: Record<string, { table: string; search?: string; order: string; select?: string; admin?: boolean; key?: string }> = {
   products: { table: 'products', search: 'name', order: 'created_at' }, categories: { table: 'product_categories', search: 'name', order: 'name' },
   orders: { table: 'orders', search: 'order_number', order: 'created_at', select: '*,order_items(*),shipments(*)' },
@@ -24,6 +48,7 @@ const resources: Record<string, { table: string; search?: string; order: string;
   payments: { table: 'payment_transactions', order: 'created_at' }, reviews: { table: 'customer_reviews', order: 'created_at' },
   shipments: { table: 'shipments', order: 'created_at' }, notifications: { table: 'notifications', order: 'created_at', admin: true },
   intake: { table: 'shelter_intakes', order: 'intake_at' },
+  health: { table: 'pet_health_records', search: 'notes', order: 'occurred_at', select: '*,pets(name)' },
 };
 const slug = z.string().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const url = z.string().url().max(2000).nullable().optional();
@@ -70,6 +95,13 @@ adminRouter.patch('/pets/:id/behavior', async (req, res) => {
   const input = z.object({ energy_level: z.number().int().min(1).max(5).nullable().optional(), temperament: z.array(z.string().max(50)).max(20).default([]), suitable_homes: z.array(z.enum(['apartment', 'house'])).default([]), good_with_children: z.boolean().nullable().optional(), good_with_dogs: z.boolean().nullable().optional(), good_with_cats: z.boolean().nullable().optional(), care_hours_daily: z.number().min(0).max(24).nullable().optional(), max_hours_alone: z.number().min(0).max(24).nullable().optional(), experience_required: z.number().int().min(1).max(5).nullable().optional(), grooming_level: z.number().int().min(1).max(5).nullable().optional(), exercise_minutes: z.number().int().min(0).max(1440).nullable().optional(), needs_outdoor_space: z.boolean().nullable().optional(), notes: z.string().max(2000).optional() }).strict().parse(req.body);
   const id = uuid.parse(req.params.id);
   res.json({ data: assertDb(await db().from('pet_behavior_profiles').upsert({ ...input, pet_id: id, verified_by: req.actor!.id, verified_at: new Date().toISOString() }).select().single()) });
+});
+// Medical history is written by veterinarians and staff, never edited afterwards.
+adminRouter.post('/health', async (req, res) => {
+  const input = z.object({ pet_id: uuid, record_type: z.enum(['checkup', 'vaccination', 'treatment', 'surgery', 'medication', 'observation']), notes: z.string().min(5).max(5000), occurred_at: z.string().datetime({ offset: true }).optional() }).strict().parse(req.body);
+  const data = assertDb(await db().from('pet_health_records').insert({ ...input, recorded_by: req.actor!.id }).select().single());
+  await audit(req.actor!.id, 'health_record.created', 'pet_health_records', data.id);
+  res.status(201).json({ data });
 });
 adminRouter.patch('/rescue/:id/status', async (req, res) => {
   const input = z.object({ status: z.enum(['under_verification', 'verified', 'in_progress', 'resolved', 'closed', 'invalid', 'duplicate', 'declined', 'referred']), notes: z.string().max(3000).optional() }).strict().parse(req.body);
@@ -155,6 +187,15 @@ adminRouter.get('/:resource', async (req, res) => {
   const { page, limit, q } = pagination.parse(req.query);
   const { status, sort, direction } = z.object({ status: z.string().max(50).optional(), sort: z.enum(['created_at', 'name', 'status']).optional(), direction: z.enum(['asc', 'desc']).default('desc') }).parse(req.query);
   let query = db().from(resource.table).select(resource.select ?? '*', { count: 'exact' });
+  if (!isStaff(req.actor!.roles)) {
+    // Field roles see only the work assigned to them.
+    if (key === 'transport') query = query.eq('driver_id', req.actor!.id);
+    if (key === 'rescue') {
+      const assignments = assertDb<{ report_id: string }[]>(await db().from('rescue_assignments').select('report_id').eq('assigned_to', req.actor!.id));
+      if (!assignments.length) { res.json({ data: [], meta: { total: 0, page, limit } }); return; }
+      query = query.in('id', assignments.map(assignment => assignment.report_id));
+    }
+  }
   if (q && resource.search) query = query.ilike(resource.search, `%${safeSearch(q)}%`);
   if (status && ['orders', 'pets', 'adoptions', 'rescue', 'transport', 'alternatives', 'donations', 'volunteers', 'payments', 'contact_messages'].includes(key)) query = query.eq('status', status);
   const allowedSort = sort === resource.order || sort === resource.search || (sort === 'status' && ['orders','pets','adoptions','rescue','transport','donations','volunteers','payments'].includes(key));
