@@ -70,6 +70,30 @@ describe('server ↔ database contract', () => {
     expect([...new Set(problems)].sort()).toEqual([]);
   });
 
+  it('every embedded relationship is unambiguous', async () => {
+    // PostgREST refuses `table(...)` embeds when two foreign keys link the tables, unless the
+    // embed names one (`table!constraint(...)`). That failure only shows up at runtime.
+    const { rows } = await db.query<{ a: string; b: string; n: number }>(`
+      select c.conrelid::regclass::text as a, c.confrelid::regclass::text as b, count(*)::int as n
+      from pg_constraint c where c.contype = 'f' and c.connamespace = 'public'::regnamespace group by 1, 2`);
+    const links = (x: string, y: string) => rows.filter(r => (r.a === x && r.b === y) || (r.a === y && r.b === x)).reduce((sum, r) => sum + r.n, 0);
+    const problems: string[] = [];
+    const check = (table: string, select: string) => {
+      for (const [, embed, hint] of select.matchAll(/(?:^|,)\s*(?:[a-z_]+:)?([a-z_]+)(![a-z_]+)?\(/g)) {
+        const count = links(table, embed);
+        if (count === 0) problems.push(`${table} -> ${embed}: no relationship`);
+        else if (count > 1 && !hint) problems.push(`${table} -> ${embed}: ${count} relationships, name one with !constraint`);
+      }
+    };
+    for (const [, table, select] of code.matchAll(/table: '([a-z_]+)'[^}]*?select: '([^']+)'/g)) check(table, select);
+    for (const statement of code.split(/(?=\.from\(')/).filter(part => part.startsWith(".from('"))) {
+      const table = /^\.from\('([a-z_]+)'\)/.exec(statement)?.[1];
+      const chain = statement.slice(0, 900).split(/;\s*\n|\)\);/)[0];
+      if (table) for (const [, select] of chain.matchAll(/\.select\('([^']*)'/g)) check(table, select);
+    }
+    expect([...new Set(problems)].sort()).toEqual([]);
+  });
+
   it('every RPC the API calls exists with exactly the argument names it passes', async () => {
     const { rows } = await db.query<{ proname: string; args: string[] | null }>(`select proname, proargnames as args from pg_proc where pronamespace = 'public'::regnamespace`);
     const functions = new Map(rows.map(r => [r.proname, (r.args ?? []).filter(a => a.startsWith('p_'))]));

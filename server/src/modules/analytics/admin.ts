@@ -42,7 +42,7 @@ const resources: Record<string, { table: string; search?: string; order: string;
   zones: { table: 'service_zones', search: 'name', order: 'created_at' }, vehicles: { table: 'shelter_vehicles', search: 'name', order: 'name' },
   drivers: { table: 'shelter_drivers', order: 'created_at', key: 'user_id' }, donations: { table: 'donations', order: 'created_at' },
   volunteers: { table: 'volunteer_profiles', order: 'created_at', key: 'user_id', select: '*,profiles!volunteer_profiles_user_id_fkey(full_name)' },
-  users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles(role_name)', admin: true },
+  users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles!user_roles_user_id_fkey(role_name)', admin: true },
   expenses: { table: 'expenses', search: 'description', order: 'created_at' }, audit_logs: { table: 'audit_logs', search: 'action', order: 'created_at', admin: true },
   contact_messages: { table: 'contact_messages', search: 'name', order: 'created_at' },
   payments: { table: 'payment_transactions', order: 'created_at' }, reviews: { table: 'customer_reviews', order: 'created_at' },
