@@ -22,14 +22,45 @@ export interface Behavior {
   experience_required?: 'first_time' | 'some' | 'experienced' | null;
   grooming_needs?: number | null; temperament?: string[] | null; verified_at?: string | null;
 }
-export interface MatchPet { id: string; name: string; size: string; pet_behavior_profiles?: Behavior | Behavior[] | null; [key: string]: unknown }
+/** A pet_behavior_profiles row as stored in the database. Staff and veterinarians record it in these terms. */
+export interface BehaviorRow {
+  energy_level?: number | null; temperament?: string[] | null; suitable_homes?: string[] | null;
+  good_with_children?: boolean | null; good_with_dogs?: boolean | null; good_with_cats?: boolean | null;
+  care_hours_daily?: number | string | null; max_hours_alone?: number | string | null;
+  experience_required?: number | string | null; grooming_level?: number | null;
+  needs_outdoor_space?: boolean | null; verified_at?: string | null;
+}
+const numeric = (value: number | string | null | undefined) => value == null || value === '' || Number.isNaN(Number(value)) ? null : Number(value);
+/**
+ * Converts a database row into the terms the scoring uses. Anything the row
+ * does not record stays null, which lowers confidence instead of inventing a value.
+ * Experience is stored as 1-5: 1-2 suits a first-time owner, 3 needs some experience, 4-5 an experienced one.
+ */
+export function behaviorFromRow(row: BehaviorRow): Behavior {
+  const homes = row.suitable_homes?.length ? row.suitable_homes : null;
+  const experience = numeric(row.experience_required);
+  return {
+    energy_level: row.energy_level ?? null,
+    apartment_suitable: homes ? homes.includes('apartment') : null,
+    needs_outdoor_space: row.needs_outdoor_space ?? null,
+    good_with_children: row.good_with_children ?? null, good_with_dogs: row.good_with_dogs ?? null, good_with_cats: row.good_with_cats ?? null,
+    min_care_hours: numeric(row.care_hours_daily), max_hours_alone: numeric(row.max_hours_alone),
+    experience_required: experience == null ? null : experience <= 2 ? 'first_time' : experience === 3 ? 'some' : 'experienced',
+    grooming_needs: row.grooming_level ?? null,
+    temperament: row.temperament?.length ? row.temperament : null,
+    verified_at: row.verified_at ?? null,
+  };
+}
+export interface MatchPet { id: string; name: string; size: string; pet_behavior_profiles?: Behavior | BehaviorRow | (Behavior | BehaviorRow)[] | null; [key: string]: unknown }
 const experienceRank = { first_time: 0, some: 1, experienced: 2 };
 export const weights = { activity: 25, home: 20, household: 20, time: 15, experience: 10, preferences: 10 };
 
 /** Scores only observed, staff-verified factors. Unknown factors reduce confidence, never become a made-up neutral score. */
 export function calculateMatch(answers: Answers, pet: MatchPet) {
   const raw = Array.isArray(pet.pet_behavior_profiles) ? pet.pet_behavior_profiles[0] : pet.pet_behavior_profiles;
-  const profile: Behavior = raw?.verified_at ? raw : {};
+  // Database rows use the shelter's recording terms; the built-in sample profiles are already in scoring terms.
+  const isRow = raw != null && ('suitable_homes' in raw || 'care_hours_daily' in raw || 'grooming_level' in raw);
+  const profile: Behavior = !raw?.verified_at ? {} : isRow ? behaviorFromRow(raw as BehaviorRow) : raw as Behavior;
   const exclusions: string[] = [], reasons: string[] = [], challenges: string[] = [];
   const factors: { name: string; weight: number; score: number | null }[] = [];
   const add = (name: keyof typeof weights, score: number | null, positive: string, concern: string) => {

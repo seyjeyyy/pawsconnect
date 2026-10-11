@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessmentSchema, calculateMatch, weights, type Answers, type Behavior, type MatchPet } from '../../server/src/modules/matchmaking/engine';
+import { assessmentSchema, behaviorFromRow, calculateMatch, weights, type Answers, type Behavior, type BehaviorRow, type MatchPet } from '../../server/src/modules/matchmaking/engine';
 
 const answers: Answers = { activity: 3, home_type: 'house', outdoor_space: true, care_hours: 3, hours_away: 4, experience: 'some', children: false, other_pets: false, preferred_size: 'any', temperament: 'any', grooming_commitment: 3, exercise_capacity: 3 };
 const verified: Behavior = { energy_level: 3, apartment_suitable: true, needs_outdoor_space: false, good_with_children: true, good_with_dogs: true, good_with_cats: true, min_care_hours: 2, max_hours_alone: 6, experience_required: 'first_time', grooming_needs: 2, temperament: ['calm'], verified_at: '2026-01-01T00:00:00Z' };
@@ -66,5 +66,33 @@ describe('compatibility engine', () => {
   it('rejects out-of-range and unexpected quiz answers', () => {
     expect(assessmentSchema.safeParse({ ...answers, activity: 9 }).success).toBe(false);
     expect(assessmentSchema.safeParse({ ...answers, score: 100 }).success).toBe(false);
+  });
+
+  describe('profiles stored in the database', () => {
+    const row: BehaviorRow = { energy_level: 3, temperament: ['calm'], suitable_homes: ['apartment', 'house'], good_with_children: true, good_with_dogs: true, good_with_cats: true, care_hours_daily: '2.0', max_hours_alone: '6.0', experience_required: 1, grooming_level: 2, needs_outdoor_space: false, verified_at: '2026-01-01T00:00:00Z' };
+
+    it('are translated into scoring terms', () => {
+      expect(behaviorFromRow(row)).toMatchObject({ apartment_suitable: true, min_care_hours: 2, max_hours_alone: 6, experience_required: 'first_time', grooming_needs: 2 });
+      expect(behaviorFromRow({ ...row, suitable_homes: ['house'], experience_required: 3 })).toMatchObject({ apartment_suitable: false, experience_required: 'some' });
+      expect(behaviorFromRow({ ...row, experience_required: 5 }).experience_required).toBe('experienced');
+    });
+
+    it('score fully when fully recorded, exactly like the equivalent scoring-terms profile', () => {
+      const result = calculateMatch(answers, { id: 'p1', name: 'Test', size: 'medium', pet_behavior_profiles: row });
+      expect(result).toMatchObject({ score: 100, confidence: 100, excluded: false });
+    });
+
+    it('apply exclusions from recorded values', () => {
+      const result = calculateMatch({ ...answers, home_type: 'apartment' }, { id: 'p1', name: 'Test', size: 'medium', pet_behavior_profiles: { ...row, suitable_homes: ['house'] } });
+      expect(result.excluded).toBe(true);
+    });
+
+    it('leave unrecorded values unknown instead of guessing', () => {
+      const partial = behaviorFromRow({ energy_level: 4, verified_at: row.verified_at });
+      expect(partial).toMatchObject({ apartment_suitable: null, min_care_hours: null, experience_required: null, grooming_needs: null, temperament: null });
+      const result = calculateMatch(answers, { id: 'p1', name: 'Test', size: 'medium', pet_behavior_profiles: { energy_level: 3, suitable_homes: [], verified_at: row.verified_at } });
+      expect(result.confidence).toBeLessThan(100);
+      expect(result.requires_staff_assessment).toBe(true);
+    });
   });
 });
