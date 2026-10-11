@@ -2,7 +2,7 @@
 
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
-Current totals: 131 unit, API and database tests and 12 browser tests pass; both workspaces typecheck and build. Live at https://pawsconnect-one.vercel.app. The live database is at migration 013.
+Current totals: 138 unit, API and database tests and 12 browser tests pass; both workspaces typecheck and build. Live at https://pawsconnect-one.vercel.app. The live database is at migration 013; migration 014 is written and tested but not yet applied (see "Roles").
 
 ## Where the data comes from
 
@@ -48,10 +48,11 @@ Verified live on 2026-10-11 with real events, not seeded ones.
 - Six staff-only requests by a customer account produced six recorded events and one open alert. The alert could be resolved only by a super administrator, and only with investigation notes.
 - Granting the administrator role directly is refused. An administrator files a request; the requester cannot approve it; a super administrator's rejection changed no roles; a decided request cannot be decided again.
 - Administrators, staff and customers are refused the security centre.
+- After the role separation: on the deployed site the super administrator was allowed all 6 system routes and none of 12 shelter routes; the administrator and shelter staff the reverse. Typing the other side's address directly returns each to their own home.
 
 Limits: there is one detection rule (five or more refusals within ten minutes). Sign-in attempts are not imported from Supabase Auth, so failed logins do not appear. The security centre says this on screen.
 
-The log currently holds 18 refusals and two resolved alerts. All of them came from the verification run, in which demo accounts were deliberately pointed at routes they may not open. The resolution notes say so.
+The log currently holds 42 refusals and five resolved alerts. All of them came from the verification runs, in which demo accounts were deliberately pointed at routes they may not open. The resolution notes say so.
 
 ## Money
 
@@ -74,11 +75,13 @@ None of it has been deleted or altered by the migrations. Removing it before rea
 
 Each account lands on, and can only reach, what its role is for. The API enforces this, with tests per role.
 
+System administration and shelter operations are separate lines of authority; neither role implies the other. The API enforces the split now. Migration 014 enforces the same split for anyone using the database directly with their own sign-in. Until it is applied, a super administrator could still read shelter records that way, and a shelter administrator could still read other accounts' roles and the audit trail.
+
 | Role | Home | Reach |
 | --- | --- | --- |
-| Super administrator | Workspace overview | Everything, plus security events, alerts and elevated-access approvals |
-| Administrator | Workspace overview | Everything except the security centre |
-| Shelter staff | Workspace overview | Everything except people, the audit trail and the security centre |
+| Super administrator | Security overview | System only: accounts and access (assigning roles), audit trail, security events and alerts, elevated-access requests. No shelter screens. |
+| Administrator | Workspace overview | Shelter only: store, animals, adoption, rescue, transport, donations, expenses. No accounts, audit trail or security. Decides adoptions and manages service zones, which staff cannot. |
+| Shelter staff | Workspace overview | Shelter operations |
 | Veterinarian | Animals in care | Animals and health records |
 | Rescue personnel | My rescue assignments | Reports assigned to them |
 | Shelter driver | My transport jobs | Trips assigned to them |
@@ -139,6 +142,7 @@ The adoption, rescue, transport, donation and volunteer workflows have been run 
 - Fixed: signed-in staff could write catalog, pet and zone rows directly through Supabase, bypassing validation and the audit trail; those writes now go only through the API.
 - Fixed: public reads exposed product cost and internal behaviour notes.
 - Open, low severity: `has_role(uuid, text[])` is callable by signed-in users because several RLS policies use it directly, so a user could test whether another user id holds a role.
+- Elevated-access changes need two super administrators (one requests, another approves). The demo has one, so that flow cannot be completed in the demo without a second.
 - The eleven demo accounts share one simple password, and two of them are administrators. Change those passwords or remove the accounts before real use.
 
 ## Content to replace before launch

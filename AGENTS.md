@@ -63,9 +63,9 @@ Every registered account holds the four community roles (buyer, adopter, donor, 
 
 | Role | Lands on | Can reach |
 | --- | --- | --- |
-| super_administrator | `/admin/overview` | Everything an administrator can, plus security events, alerts and elevated-access approvals |
-| administrator | `/admin/overview` | Everything except the security centre |
-| shelter_staff | `/admin/overview` | Everything except users and audit logs |
+| super_administrator | `/admin/security` | System administration only: accounts and access, audit trail, security events and alerts, elevated-access requests. No shelter routes. |
+| administrator | `/admin/overview` | Shelter operations only. No accounts, audit trail or security. Has a few approvals staff lack (adoption decisions, service zones). |
+| shelter_staff | `/admin/overview` | Shelter operations |
 | veterinarian | `/admin/pets` | Pets, health records |
 | rescue_personnel | `/admin/rescue` | Rescue reports assigned to them |
 | shelter_driver | `/admin/transport` | Transport requests assigned to them |
@@ -79,7 +79,9 @@ Two places define this and they must agree:
 
 The server uses the service role, which bypasses RLS. Every query for a user's own data must filter by the actor's id in code; RLS is a second line of defence, not the first.
 
-`super_administrator` counts as `administrator` wherever a role is checked (`has_role` in SQL, `authorize` and `isStaff` on the server). Granting or removing `administrator` or `super_administrator` cannot be done directly: an administrator files a request (`critical_approvals`) and a different super administrator decides it. The first super administrator is granted by inserting into `user_roles` in SQL, because nobody else can.
+**System administration and shelter operations are separate, and neither role implies the other** (migration 014). `has_role` means exactly the roles asked for; `authorize` has no implication; `isStaff` is administrator and shelter staff only; `isSystemAdministrator` is the super administrator. In `workspaceAccess`, the `systemAccess` list is reachable only by the super administrator and is all the super administrator can reach. Do not reintroduce "the super administrator can do everything": it was removed on purpose.
+
+Roles are assigned only by the super administrator. Granting or removing `administrator` or `super_administrator` cannot be done directly even by them: one super administrator files a request (`critical_approvals`) and a different super administrator decides it, so it needs two. The first administrator and the first super administrator are granted by inserting into `user_roles` in SQL.
 
 ## Security events
 
@@ -114,8 +116,8 @@ npm run build
 
 The production database holds **demo data**, created through the API as each demo account: 10 products, 6 pets, 3 service zones, and orders, applications, reports, transport requests, donations and volunteer tasks. Payments in it are Stripe test-mode payments.
 
-- Eleven demo accounts exist, one per role including `super.administrator`, as `<role>@pawsconnect.test` (dots for underscores). Ask the project owner for the password; it is not in the repository.
-- The security log holds 18 refusals and two resolved alerts from the verification run on 2026-10-11, and there is one rejected elevated-access request and one pending refund request from the same run. They are real records of that run, not seeded examples.
+- Eleven demo accounts exist, one per role including `super.administrator` (only one, so an elevated-access request cannot be approved in the demo without creating a second), as `<role>@pawsconnect.test` (dots for underscores). Ask the project owner for the password; it is not in the repository.
+- The security log holds 42 refusals and five resolved alerts from the verification runs on 2026-10-11, and there is one rejected elevated-access request and one pending refund request from the same runs. They are real records of that run, not seeded examples.
 - The three service zones are a plain rectangle around Malolos named "Demo ... zone". They are not real boundaries.
 - Local development uses the same database as the live site. Anything you create or delete locally is created or deleted in production. There is no separate development database.
 

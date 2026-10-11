@@ -44,9 +44,11 @@ With no configuration the app still starts, but it has nothing to show: every li
    select id, 'administrator' from auth.users where email = 'you@example.com';
    ```
 
-   After that, administrators assign roles from **Shelter workspace → People & access**. Self-registration only ever grants the community roles (buyer, adopter, donor, community reporter).
+   The administrator runs the shelter: store, animals, adoption, rescue, transport and money. Self-registration only ever grants the community roles (buyer, adopter, donor, community reporter).
 
-6. Optionally create the first super administrator the same way, with `'super_administrator'` in place of `'administrator'`. That role adds the security centre (recorded refusals, alerts) and decides requests to grant or remove administrator access. Once one exists, further administrators and super administrators are added by request and approval in the workspace, not by SQL.
+6. Make an account the first super administrator the same way, with `'super_administrator'` in place of `'administrator'`. Use a separate account for it. The super administrator runs the system and nothing else: it assigns roles under **People & access**, reads the audit trail, and works the security centre (recorded refusals, alerts). It has no shelter screens, and the administrator has no system screens.
+
+   Granting or removing administrator or super administrator access afterwards takes two super administrators: one files the request and another approves it.
 
 ## Optional integrations
 
