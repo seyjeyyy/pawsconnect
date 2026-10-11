@@ -74,7 +74,7 @@ describe('upgrading a populated database from 008', () => {
   });
 });
 
-it('upgrades a populated 014 database to 017 without changing users, access or customer records',async()=>{
+it('upgrades a populated 014 database to 018 without changing users, access or customer records',async()=>{
  const previous='202610110014_separate_system_and_shelter_roles.sql';
  const db=await createDatabase({through:previous});
  try{
@@ -91,7 +91,7 @@ it('upgrades a populated 014 database to 017 without changing users, access or c
   const before=await snapshot();
   await applyMigrations(db,file=>file>previous);
   expect(await snapshot()).toEqual(before);
-  expect((await db.query("select mode,schema_version from operations_config")).rows).toEqual([{mode:'normal',schema_version:'017'}]);
+  expect((await db.query("select mode,schema_version from operations_config")).rows).toEqual([{mode:'normal',schema_version:'018'}]);
   expect((await db.query('select * from account_access_controls')).rows).toEqual([]);
   expect((await db.query('select public.account_session_allowed($1,$1) allowed',[buyer])).rows).toEqual([{allowed:true}]);
  }finally{await db.close();}

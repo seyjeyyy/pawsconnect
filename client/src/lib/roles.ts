@@ -24,15 +24,23 @@ const fieldSections: Record<string, string[]> = {
 };
 
 /** Workspace sections this account may open, in menu order. Empty means no workspace access. */
-export function workspaceSections(roles: string[]): string[] {
+export function workspaceSections(roles: string[], permissions?: string[]): string[] {
   // An account holding both kinds of role gets both sets; the demo accounts hold one each.
   const sections = [
     ...(roles.includes('super_administrator') ? systemSections : []),
     ...(roles.includes('administrator') || roles.includes('shelter_staff') ? staffSections : []),
   ];
-  if (sections.length) return sections;
-  return [...new Set(roles.flatMap(role => fieldSections[role] ?? []))];
+  const available = sections.length ? sections : [...new Set(roles.flatMap(role => fieldSections[role] ?? []))];
+  return permissions === undefined ? available : available.filter(section => systemSections.includes(section) || (section === 'overview' ? permissions.length > 0 : (sectionPermissions[section] || []).some(p=>permissions.includes(p))));
 }
+
+export const sectionPermissions: Record<string,string[]> = {
+  pets:['animals.view'], health:['animals.health'],adoptions:['adoptions.review'],rescue:['rescue.manage','rescue.assigned'],
+  transport:['transport.manage','transport.assigned'],alternatives:['transport.manage'],vehicles:['transport.manage'],drivers:['transport.manage'],
+  products:['store.manage'],categories:['store.manage'],orders:['store.manage'],reviews:['store.manage'],
+  payments:['finance.manage'],refunds:['finance.manage'],expenses:['finance.manage'],donations:['donations.view'],
+  volunteers:['volunteers.manage'],zones:['zones.view','zones.manage'],contact_messages:['contacts.manage'],
+};
 
 /** Section titles as a field role sees them: their own work, not the shelter's whole list. */
 export const fieldSectionLabels: Record<string, string> = {
@@ -48,25 +56,21 @@ export const fieldStatusOptions: Record<string, string[]> = {
   transport: ['picked_up', 'in_transit', 'arrived'],
 };
 
-const titles: [string, string][] = [
-  ['super_administrator', 'Super administrator'], ['administrator', 'Administrator'], ['shelter_staff', 'Shelter staff'], ['veterinarian', 'Veterinarian'],
-  ['rescue_personnel', 'Rescue personnel'], ['shelter_driver', 'Shelter driver'], ['volunteer', 'Volunteer'],
-];
-/** The most senior role the account holds, for display. */
-export const roleTitle = (roles: string[]) => titles.find(([role]) => roles.includes(role))?.[1] ?? 'Member';
+/** One of three primary experiences; specialties remain operational assignments. */
+export const roleTitle = (roles: string[]) => roles.includes('super_administrator') ? 'Super administrator' : isOperational(roles) ? 'Staff' : 'User';
 
 /** Where "my account" leads for this account. */
-export const homePath = (roles: string[]) => isOperational(roles) ? `/admin/${workspaceSections(roles)[0]}` : roles.includes('volunteer') ? '/account/volunteer' : '/account/overview';
+export const homePath = (roles: string[], permissions?:string[]) => isOperational(roles) ? (workspaceSections(roles,permissions).length ? `/admin/${workspaceSections(roles,permissions)[0]}` : '/account/profile') : roles.includes('volunteer') ? '/account/volunteer' : '/account/overview';
 
 /** Resume an intended task only when it belongs to this account's area. */
-export function signInPath(roles: string[], next: string | null) {
-  const fallback = homePath(roles);
+export function signInPath(roles: string[], next: string | null, permissions?:string[]) {
+  const fallback = homePath(roles,permissions);
   if (!next?.startsWith('/') || next.startsWith('//') || next.includes('\\')) return fallback;
   const path = new URL(next, 'https://pawsconnect.invalid').pathname;
   if (path === '/' || path === '/welcome' || path.startsWith('/auth')) return fallback;
   if (path.startsWith('/admin')) {
     const section = path.split('/')[2];
-    return workspaceSections(roles).includes(section) || (section === 'operations' && roles.includes('super_administrator')) ? next : fallback;
+    return workspaceSections(roles,permissions).includes(section) || (section === 'operations' && roles.includes('super_administrator')) ? next : fallback;
   }
   if (isOperational(roles) && !['/account/profile','/account/settings','/account/notifications'].includes(path)) return fallback;
   return next;

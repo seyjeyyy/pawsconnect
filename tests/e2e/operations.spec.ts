@@ -1,4 +1,9 @@
 import {expect,test,type Page} from '@playwright/test';
+async function openWorkspaceMenu(page:Page){
+ await expect(page.locator('.dashboard-main h1')).toBeVisible();
+ const trigger=page.getByRole('button',{name:'Workspace menu',exact:true});
+ if(await trigger.isVisible() && !(await page.getByRole('dialog',{name:'Workspace menu',exact:true}).isVisible())) await trigger.click();
+}
 // Browser-only fixtures. Every backend call stays intercepted on the isolated
 // preview server. Production authentication contains no test bypass.
 async function fixture(page:Page,role='super_administrator',signedIn=true){
@@ -25,7 +30,7 @@ async function fixture(page:Page,role='super_administrator',signedIn=true){
   const request=route.request(),path=new URL(request.url()).pathname;
   let data:unknown=[],meta:unknown=undefined;
   const activeRole=request.headers().authorization?.split(':')[1]||role;
-  if(path==='/api/auth/me')data={...user,full_name:'Fixture operator',roles:[...new Set([activeRole,'buyer','adopter','donor','community_reporter'])]};
+  if(path==='/api/auth/me')data={...user,full_name:'Fixture operator',permissions:activeRole==='administrator'||activeRole==='shelter_staff'?['animals.view','animals.manage','animals.health','store.manage','adoptions.review','rescue.manage','transport.manage','finance.manage','donations.view','volunteers.manage','contacts.manage']:activeRole==='veterinarian'?['animals.view','animals.health']:activeRole==='rescue_personnel'||activeRole==='volunteer'?['rescue.assigned']:activeRole==='shelter_driver'?['transport.assigned']:[],roles:[...new Set([activeRole,'buyer','adopter','donor','community_reporter'])]};
   else if(path==='/api/cart')data={items:[]};
   else if(path==='/api/volunteers/mine')data=null;
   else if(path==='/api/health')data={status:'ok',payment_mode:'unavailable'};
@@ -58,6 +63,7 @@ for (const role of ['super_administrator','administrator','shelter_staff','veter
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await fixture(page,role);
   await page.goto('/admin');
+  await openWorkspaceMenu(page);
   await expect(page.getByRole('link',{name:'Profile & settings',exact:true})).toBeVisible();
   const workspaceLinks=await page.getByRole('navigation',{name:'Shelter navigation',exact:true}).locator('a').evaluateAll(links=>links.map(link=>link.getAttribute('href')));
   expect(workspaceLinks.length).toBeGreaterThan(0);
@@ -65,6 +71,7 @@ for (const role of ['super_administrator','administrator','shelter_staff','veter
   await expect(page.locator('.dashboard-main h1')).toHaveText('My profile');
   const menu=page.getByRole('navigation',{name:'Account navigation',exact:true});
   const assertMenu=async()=>{
+   await openWorkspaceMenu(page);
    expect(await menu.locator('a[href^="/admin/"]').evaluateAll(links=>links.map(link=>link.getAttribute('href')).filter(href=>href!=='/admin/operations'))).toEqual(workspaceLinks);
    expect(await menu.locator('a[href^="/account/"]').evaluateAll(links=>links.map(link=>link.getAttribute('href')))).toEqual(['/account/notifications','/account/profile','/account/settings']);
    await expect(menu.locator('a[href="/admin/operations"]')).toHaveCount(role==='super_administrator'?1:0);
@@ -72,6 +79,7 @@ for (const role of ['super_administrator','administrator','shelter_staff','veter
   await assertMenu();
   await menu.getByRole('link',{name:'Account settings',exact:true}).click();
   await expect(page.locator('.dashboard-main h1')).toHaveText('Account settings');
+  await openWorkspaceMenu(page);
   await expect(menu.getByRole('link',{name:'Account settings',exact:true})).toHaveAttribute('aria-current','page');
   await assertMenu();
   await page.reload();
@@ -87,6 +95,7 @@ for (const role of ['buyer','volunteer']) {
  test(`${role} retains its community menu in account settings`,async({page})=>{
   await fixture(page,role);await page.goto('/account/settings');
   await expect(page.locator('.dashboard-main h1')).toHaveText('Account settings');
+  await openWorkspaceMenu(page);
   const menu=page.getByRole('navigation',{name:'Account navigation',exact:true});
   await expect(menu.locator('a[href="/account/orders"]')).toHaveCount(1);
   await expect(menu.locator('a[href="/account/applications"]')).toHaveCount(1);
@@ -121,6 +130,61 @@ test('account settings and the system workspace need no authenticator challenge'
 });
 
 const destinations:Record<string,string>={super_administrator:'/admin/security',administrator:'/admin/overview',shelter_staff:'/admin/overview',veterinarian:'/admin/pets',rescue_personnel:'/admin/rescue',shelter_driver:'/admin/transport',volunteer:'/account/volunteer',buyer:'/account/overview',adopter:'/account/overview',donor:'/account/overview',community_reporter:'/account/overview'};
+
+test('module-restricted staff see only their assigned animal records and a usable sidebar',async({page})=>{
+ await fixture(page,'shelter_staff');
+ await page.route('**/api/auth/me',route=>route.fulfill({json:{data:{id:'00000000-0000-4000-8000-000000000010',full_name:'Animal viewer',roles:['shelter_staff'],permissions:['animals.view']}}}));
+ await page.goto('/admin/pets');await expect(page.locator('.dashboard-main h1')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add pet',exact:true})).toHaveCount(0);
+ await openWorkspaceMenu(page);
+ const nav=page.getByRole('navigation',{name:'Shelter navigation',exact:true});
+ await expect(nav.locator('a[href="/admin/pets"]')).toHaveCount(1);
+ await expect(nav.locator('a[href="/admin/payments"],a[href="/admin/orders"],a[href="/admin/users"]')).toHaveCount(0);
+ if(await page.getByRole('dialog',{name:'Workspace menu',exact:true}).isVisible()){
+  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Workspace menu',exact:true})).toBeFocused();
+ }else{
+  await page.getByRole('button',{name:'Collapse sidebar'}).click();await expect(nav).toBeHidden();
+  await page.getByRole('button',{name:'Expand sidebar'}).click();await expect(nav).toBeVisible();
+ }
+ await page.screenshot({path:`test-results/optimized-workspace-${test.info().project.name}.png`,fullPage:true});
+});
+
+test('public reference data does not poll after thirty seconds',async({page})=>{
+ let reads=0;await page.clock.install();
+ await page.route('**/api/**',route=>{reads++;const path=new URL(route.request().url()).pathname;return route.fulfill({json:{data:path.endsWith('/health')?{payment_mode:'unavailable'}:path.endsWith('/status')?{active:false}:[]}});});
+ await page.goto('/');await expect(page.getByRole('heading',{level:1})).toBeVisible();
+ await page.waitForLoadState('networkidle');const settled=reads;
+ await page.clock.fastForward(35000);
+ expect(reads).toBe(settled);
+ await test.info().attach('public-request-count',{body:JSON.stringify({initial: settled,after35Seconds:reads,extraRequests:reads-settled}),contentType:'application/json'});
+});
+
+test('record editors retain entered values on failure and close with Escape',async({page})=>{
+ await fixture(page,'shelter_staff');
+ await page.route('**/api/admin/pets',route=>route.fulfill({status:503,json:{error:{code:'UNAVAILABLE',message:'Temporary record service failure'}}}));
+ await page.goto('/admin/pets');
+ await page.getByRole('button',{name:'Add pet',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Edit record',exact:true});await expect(dialog).toBeVisible();
+ await dialog.getByLabel('Name',{exact:true}).fill('Retained animal name');
+ await dialog.getByLabel('Description',{exact:true}).fill('Animal description retained after a failed save.');
+ await dialog.getByRole('button',{name:'Save record',exact:true}).click();
+ await expect(dialog.getByRole('alert')).toContainText('Temporary record service failure');
+ await expect(dialog.getByLabel('Name',{exact:true})).toHaveValue('Retained animal name');
+ await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
+});
+
+test('record status filtering reaches the server and uses exact pagination totals',async({page})=>{
+ await fixture(page,'shelter_staff');
+ await page.route('**/api/admin/pets?**',route=>route.fulfill({json:{data:[],meta:{total:0,page:1,limit:15}}}));
+ await page.goto('/admin/pets');
+ await page.waitForLoadState('networkidle');
+ await Promise.all([
+  page.waitForRequest(r=>r.url().includes('/api/admin/pets?')&&new URL(r.url()).searchParams.get('status')==='available'),
+  page.getByRole('combobox',{name:'Status',exact:true}).selectOption('available'),
+ ]);
+ await expect(page.getByRole('combobox',{name:'Status',exact:true})).toHaveValue('available');
+ await expect(page.getByRole('button',{name:'Next',exact:true})).toBeDisabled();
+});
 for(const [role,destination] of Object.entries(destinations)) {
  test(`${role} signs in to a dedicated task page`,async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));

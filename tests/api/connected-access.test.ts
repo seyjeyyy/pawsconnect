@@ -36,13 +36,20 @@ vi.mock('../../server/src/config/supabase',()=>({
 import { createApp } from '../../server/src/app';
 const app=createApp();
 const tokenFor=(id:string)=>`test.${Buffer.from(JSON.stringify({sub:id,session_id:id,aal:'aal1',amr:[{method:'password',timestamp:Math.floor(Date.now()/1000)}]})).toString('base64url')}.test`;
-const workflowCalls=()=>state.rpc.mock.calls.filter(call=>call[0]!=='account_session_allowed');
+const workflowCalls=()=>state.rpc.mock.calls.filter(call=>!['account_session_allowed','account_permissions'].includes(call[0]));
 beforeEach(()=>{
  state.sessionAllowed=true;
- state.queries=[];state.rpc.mockReset().mockImplementation(async(name:string)=>({data:name==='account_session_allowed'?state.sessionAllowed:null,error:null}));
+ state.queries=[];state.rpc.mockReset().mockImplementation(async(name:string,args:any)=>({data:name==='account_session_allowed'?state.sessionAllowed:name==='account_permissions'?(args.p_user_id===ids.admin?['animals.view','animals.manage','animals.health','store.manage','adoptions.review','rescue.manage','transport.manage','finance.manage','donations.view','volunteers.manage','contacts.manage','zones.manage']:[]):null,error:null}));
  state.tables={user_roles:[{user_id:ids.alice,roles:{name:'buyer'}},{user_id:ids.bob,roles:{name:'buyer'}},{user_id:ids.admin,roles:{name:'administrator'}},{user_id:ids.super,roles:{name:'super_administrator'}}]};
 });
 describe('connected API ownership',()=>{
+ it('financial reports omit unrelated operational totals and authorize exports in SQL',async()=>{
+  const previous=state.rpc.getMockImplementation()!;
+  state.rpc.mockImplementation(async(name:string,args:any)=>name==='admin_metrics'?{data:{store_revenue_centavos:100,financial_note:'Live payments only',pending_adoptions:99,registered_users:123},error:null}:previous(name,args));
+  const result=await request(app).get('/api/admin/analytics?export=true').set('Authorization',`Bearer ${tokenFor(ids.admin)}`).expect(200);
+  expect(result.body.data).toEqual({store_revenue_centavos:100,financial_note:'Live payments only'});
+  expect(state.rpc).toHaveBeenCalledWith('authorize_workspace_export',{p_actor_id:ids.admin});
+ });
  it('reports a deployment mismatch and refuses access when the session-check migration is missing',async()=>{
   state.rpc.mockImplementation(async()=>({data:null,error:{code:'PGRST202',message:'Missing public.account_session_allowed in schema cache'}}));
   const result=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${tokenFor(ids.alice)}`).expect(503);

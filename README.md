@@ -97,6 +97,8 @@ The current repair's findings, changed files and verification evidence are in [d
 
 ## Deployment (Vercel)
 
+The current optimization working tree requires migration **018**. Review [account permissions and rollback](docs/ACCOUNT_PERMISSIONS.md) before applying it. It preserves existing identities/history and backfills explicit staff grants. The deployment check now requires schema 018. See [optimization results](docs/OPTIMIZATION_REPORT.md) for local evidence and remaining hosted validation.
+
 Live at https://pawsconnect-one.vercel.app. One Vercel project serves both parts: the web app as static files from `client/dist`, and the Express API as a serverless function (`api/index.ts`) that receives every `/api/*` request. Routing is in `vercel.json`.
 
 To redeploy after changes:

@@ -5,6 +5,7 @@ import { authenticate, authorize, isStaff, isSystemAdministrator } from '../../m
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
 import { connectedAdminRouter } from './connected.js';
+import { workspacePermissions } from '../../middleware/permissions.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -26,6 +27,7 @@ const fieldAccess: Record<string, { read: string[]; write: RegExp[] }> = {
 const systemAccess = {
   read: ['security-summary', 'security_events', 'security_alerts', 'critical_approvals', 'users', 'audit_logs'],
   write: [
+    new RegExp(`^PUT /users/${recordId}/permissions$`),
     /^POST \/critical_approvals$/,
     new RegExp(`^POST /critical_approvals/${recordId}/decision$`),
     new RegExp(`^POST /security_alerts/${recordId}/resolve$`),
@@ -41,6 +43,8 @@ export const workspaceAccess: RequestHandler = (req, _res, next) => {
     if (!isSystemAdministrator(roles)) throw new ApiError(403, 'FORBIDDEN', 'This action requires the super administrator.');
     next(); return;
   }
+  const required = workspacePermissions(req.method, route);
+  if (req.actor?.permissions !== undefined && (!required.length || !required.some(p=>req.actor!.permissions!.includes(p)))) throw new ApiError(403,'FORBIDDEN','You are not assigned to this module.');
   if (isStaff(roles)) { next(); return; }
   const grants = roles.flatMap(role => fieldAccess[role] ? [fieldAccess[role]] : []);
   const path = req.path.replace(/\/+$/, '');
@@ -52,6 +56,14 @@ export const workspaceAccess: RequestHandler = (req, _res, next) => {
 };
 adminRouter.use(authenticate, workspaceAccess);
 adminRouter.use(connectedAdminRouter);
+adminRouter.get('/overview', async (req,res)=>{
+  res.json({data:assertDb(await db().rpc('workspace_overview',{p_actor_id:req.actor!.id}))});
+});
+adminRouter.put('/users/:id/permissions', authorize('super_administrator'), async (req,res) => {
+  const {permissions}=z.object({permissions:z.array(z.string().min(3).max(60)).max(30)}).strict().parse(req.body);
+  assertDb(await db().rpc('set_staff_access',{p_actor_id:req.actor!.id,p_user_id:uuid.parse(req.params.id),p_permissions:permissions}));
+  res.json({data:{updated:true}});
+});
 const resources: Record<string, { table: string; search?: string; order: string; select?: string; admin?: boolean; super?: boolean; key?: string }> = {
   security_events: { table: 'security_events', order: 'created_at', super: true },
   security_alerts: { table: 'security_alerts', order: 'created_at', super: true },
@@ -67,7 +79,7 @@ const resources: Record<string, { table: string; search?: string; order: string;
   zones: { table: 'service_zones', search: 'name', order: 'created_at' }, vehicles: { table: 'shelter_vehicles', search: 'name', order: 'name' },
   drivers: { table: 'shelter_drivers', order: 'created_at', key: 'user_id' }, donations: { table: 'donations', order: 'created_at' },
   volunteers: { table: 'volunteer_profiles', order: 'created_at', key: 'user_id', select: '*,profiles!volunteer_profiles_user_id_fkey(full_name)' },
-  users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles!user_roles_user_id_fkey(role_name)', super: true },
+  users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles!user_roles_user_id_fkey(role_name),staff_access!staff_access_user_id_fkey(permissions)', super: true },
   expenses: { table: 'expenses', search: 'description', order: 'created_at' }, audit_logs: { table: 'audit_logs', search: 'action', order: 'created_at', super: true },
   contact_messages: { table: 'contact_messages', search: 'name', order: 'created_at' },
   payments: { table: 'payment_transactions', order: 'created_at' }, reviews: { table: 'customer_reviews', order: 'created_at' },
@@ -89,7 +101,10 @@ async function audit(actor: string, action: string, table: string, id: string) {
   assertDb(await db().from('audit_logs').insert({ actor_id: actor, action, entity_type: table, entity_id: id }));
 }
 adminRouter.get('/analytics', async (req, res) => {
-  res.json({ data: assertDb(await db().rpc('admin_metrics', { p_actor_id: req.actor!.id })) });
+  if(req.query.export==='true') assertDb(await db().rpc('authorize_workspace_export',{p_actor_id:req.actor!.id}));
+  const totals=assertDb<Record<string,unknown>>(await db().rpc('admin_metrics', { p_actor_id: req.actor!.id }));
+  const financialKeys=['financial_note','test_payments','legacy_unclassified_payments','verified_payments'];
+  res.json({ data:Object.fromEntries(Object.entries(totals).filter(([key])=>key.endsWith('_centavos')||financialKeys.includes(key))) });
 });
 adminRouter.post('/inventory', async (req, res) => {
   const input = z.object({ product_id: uuid, variant_id: uuid.optional(), quantity_delta: z.number().int().min(-100000).max(100000).refine(n => n !== 0), reason: z.string().min(5).max(500) }).strict().parse(req.body);
@@ -210,6 +225,7 @@ adminRouter.get('/:resource', async (req, res) => {
   if (!resource) throw new ApiError(404, 'NOT_FOUND', 'Administration resource not found.');
   if (resource.super && !req.actor!.roles.includes('super_administrator')) throw new ApiError(403, 'FORBIDDEN', 'Super administrator access required.');
   if (resource.admin && !req.actor!.roles.includes('administrator')) throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
+  if (req.query.export === 'true') assertDb(await db().rpc('authorize_workspace_export',{p_actor_id:req.actor!.id}));
   const { page, limit, q } = pagination.parse(req.query);
   const { status, sort, direction } = z.object({ status: z.string().max(50).optional(), sort: z.enum(['created_at', 'name', 'status']).optional(), direction: z.enum(['asc', 'desc']).default('desc') }).parse(req.query);
   let query = db().from(resource.table).select(resource.select ?? '*', { count: 'exact' });
@@ -225,7 +241,7 @@ adminRouter.get('/:resource', async (req, res) => {
   if (q && resource.search) query = query.ilike(resource.search, `%${safeSearch(q)}%`);
   if (status && ['orders', 'pets', 'adoptions', 'rescue', 'transport', 'alternatives', 'donations', 'volunteers', 'payments', 'contact_messages'].includes(key)) query = query.eq('status', status);
   const allowedSort = sort === resource.order || sort === resource.search || (sort === 'status' && ['orders','pets','adoptions','rescue','transport','donations','volunteers','payments'].includes(key));
-  const result = await query.order(sort && allowedSort ? sort : resource.order, { ascending: direction === 'asc' }).range((page - 1) * limit, page * limit - 1);
+  const result = await query.order(sort && allowedSort ? sort : resource.order, { ascending: direction === 'asc' }).order(resource.key ?? 'id', {ascending: direction === 'asc'}).range((page - 1) * limit, page * limit - 1);
   res.json({ data: assertDb(result), meta: { total: result.count, page, limit } });
 });
 adminRouter.post('/:resource', async (req, res) => {

@@ -1,15 +1,16 @@
-import { useState } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Suspense, useState } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Bell, LogOut, PawPrint, UserRound } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { homePath, isOperational, roleTitle } from '../../lib/roles';
 import { SyncStatus } from '../../contexts/SyncContext';
 import { MaintenanceNotice } from '../MaintenanceNotice';
-import { TourButton, TourInvitation } from '../tour/Tour';
+import { TourButton } from '../tour/Tour';
 import './workspace.css';
 
 export default function WorkspaceLayout() {
-  const {user, roles, profile, signOut} = useAuth();
+  const {user, roles, permissions, profile, signOut} = useAuth();
+  const {pathname}=useLocation();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   async function logout() {
@@ -19,7 +20,7 @@ export default function WorkspaceLayout() {
   return <div className="workspace-shell">
     <a className="skip-link" href="#main">Skip to main content</a>
     <header className="workspace-header"><div className="container workspace-header-inner">
-      <Link className="workspace-brand" to={homePath(roles)}><PawPrint size={26}/><span>PawsConnect<small>{isOperational(roles) ? roleTitle(roles) : roles.includes('volunteer') ? 'Volunteer workspace' : 'My account'}</small></span></Link>
+      <Link className="workspace-brand" to={homePath(roles,permissions)}><PawPrint size={26}/><span>PawsConnect<small>{roleTitle(roles)}</small></span></Link>
       <nav aria-label="Workspace shortcuts" className="workspace-shortcuts">
         <TourButton/>
         <Link to="/welcome">View website</Link>
@@ -31,8 +32,8 @@ export default function WorkspaceLayout() {
       </nav>
     </div></header>
     <SyncStatus/><MaintenanceNotice/>
+    <nav className="container workspace-breadcrumb" aria-label="Breadcrumb"><Link to={homePath(roles,permissions)}>{isOperational(roles)?'Workspace':'My account'}</Link><span aria-hidden="true">/</span><span aria-current="page">{(pathname.split('/').filter(Boolean).at(-1)||'Overview').replaceAll('_',' ')}</span></nav>
     {error && <div className="container notice error" role="alert">{error}</div>}
-    <main id="main" tabIndex={-1}><Outlet/></main>
-    <TourInvitation/>
+    <main id="main" tabIndex={-1}><Suspense fallback={<div className="container dashboard-skeleton" role="status" aria-label="Loading workspace"><div/><div/><div/></div>}><Outlet/></Suspense></main>
   </div>;
 }

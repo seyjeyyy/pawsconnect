@@ -1,0 +1,21 @@
+import {useState} from 'react';
+import {useAuth} from '../contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { Download } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { api, money } from '../lib/api';
+type Row = Record<string, unknown>;
+const titleCase = (text: string) => text.replaceAll('_', ' ');
+const valueText = (value: unknown) => String(value ?? '—');
+function QueryState({loading,error}: {loading:boolean;error:unknown}) { return loading ? <div className="dashboard-skeleton" role="status" aria-label="Loading financial report"><div/><div/><div/></div> : error ? <div role="alert" className="notice error">{error instanceof Error ? error.message : 'Unable to load report.'}</div> : null; }
+export default function FinancialOverview() {
+  const {permissions}=useAuth();const [exportError,setExportError]=useState('');const [exporting,setExporting]=useState(false);
+  const analytics = useQuery({ queryKey: ['admin', 'analytics'], queryFn: ({signal}) => api<Row>('/admin/analytics',{signal}) });
+  // The API returns one flat record: amounts end in _centavos, everything else numeric is a count.
+  const metrics = Object.entries(analytics.data || {});
+  const financial = Object.fromEntries(metrics.filter(([key]) => key.endsWith('_centavos'))) as Row;
+  const counts = Object.fromEntries(metrics.filter(([key, value]) => !key.endsWith('_centavos') && typeof value === 'number')) as Row;
+  const chart = [{ name: 'Shop sales', value: Number(financial.store_revenue_centavos || 0) / 100 }, { name: 'Transport', value: Number(financial.transport_revenue_centavos || 0) / 100 }, { name: 'Donations', value: Number(financial.donations_centavos || 0) / 100 }, { name: 'Expenses', value: Number(financial.expenses_centavos || 0) / 100 }];
+  async function exportReport() { if (!analytics.data || exporting) return; setExporting(true);setExportError('');try{const verified=await api<Row>('/admin/analytics?export=true'); const blob = new Blob([JSON.stringify(verified, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `pawsconnect-report-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url); }catch(error){setExportError(error instanceof Error?error.message:'Export failed.');}finally{setExporting(false);} }
+  return <><div role="alert">{exportError}</div><QueryState loading={analytics.isLoading} error={analytics.error} />{analytics.data && <><div className="feature-toolbar"><p className="muted">Recorded activity from the connected shelter database.{typeof analytics.data.financial_note === 'string' ? ` ${analytics.data.financial_note}` : ''}</p><button className="btn btn-secondary" disabled={exporting || !permissions.includes('reports.export')} onClick={exportReport}><Download size={16} />Export report</button></div><div className="stat-grid">{Object.entries(counts).map(([key, value]) => <div className="card stat-card" key={key}><span>{titleCase(key)}</span><strong>{valueText(value)}</strong></div>)}</div><div className="card financial-card"><h2>Income & shelter support</h2><p className="muted">Donations are shown separately from commercial revenue. Amounts reflect verified records.</p><div className="financial-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={chart} margin={{ left: 20, right: 20, top: 20, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 12 }} /><YAxis tickFormatter={(value) => `₱${value}`} tick={{ fontSize: 11 }} /><Tooltip formatter={(value: unknown) => money(Number(value) * 100)} /><Bar dataKey="value" name="Amount" fill="#f97316" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div></div><div className="card table-wrap"><table><thead><tr><th>Financial measure</th><th>Recorded amount</th></tr></thead><tbody>{Object.entries(financial).map(([key, value]) => <tr key={key}><td>{titleCase(key.replace('_centavos', ''))}</td><td>{key.endsWith('_centavos') ? money(Number(value)) : valueText(value)}</td></tr>)}</tbody></table></div></>}</>;
+}

@@ -1,3 +1,4 @@
+import {useDebouncedValue} from '../lib/useDebouncedValue';
 import {useConfirmation} from './Confirm';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -9,7 +10,8 @@ type Row = Record<string, any>;
 type Action = (path: string, method: string, body?: unknown) => Promise<void>;
 export function Lookup({ kind, name, label, value }: { kind: string; name: string; label: string; value?: string }) {
   const [search, setSearch] = useState('');
-  const query = useQuery({ queryKey: ['lookup', kind, search], queryFn: () => api<{ id: string; name: string }[]>(`/admin/lookups/${kind}?q=${encodeURIComponent(search)}`) });
+  const settledSearch=useDebouncedValue(search);
+  const query = useQuery({ queryKey: ['lookup', kind, settledSearch], queryFn: ({signal}) => api<{ id: string; name: string }[]>(`/admin/lookups/${kind}?q=${encodeURIComponent(settledSearch)}`,{signal}) });
   return <label className="field">{label}<input type="search" aria-label={`Search ${label}`} placeholder="Search by name" value={search} onChange={e => setSearch(e.target.value)} />
     <select name={name} required defaultValue={value || ''} disabled={query.isPending || !!query.error}><option value="">Choose a record</option>{query.data?.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select>
     {query.isPending && <span>Loading…</span>}{query.error && <span role="alert">{query.error.message}<button type="button" onClick={() => void query.refetch()}>Retry</button></span>}
@@ -21,7 +23,7 @@ export function Attachments({ row }: { row: Row }) {
 }
 export function AdminRecordActions({ resource, row, busy, onAction }: { resource: string; row: Row; busy: boolean; onAction: Action }) {
   const confirm=useConfirmation();
-  const { roles } = useAuth();
+  const { roles,permissions } = useAuth();
   const staff = roles.some(role => ['administrator','super_administrator','shelter_staff'].includes(role));
   const id = row.id || row.user_id;
   const submit = (path: string, method = 'POST', transform: (data: Row) => Row = d => d) => async (event: React.FormEvent<HTMLFormElement>) => {
@@ -34,7 +36,7 @@ export function AdminRecordActions({ resource, row, busy, onAction }: { resource
     {roles.includes('super_administrator') && resource==='users' && <form className="workflow-form" onSubmit={submit(`/admin/operations/accounts/${id}/access`)}><h3>Account protection</h3><p className="small muted">Suspension blocks PawsConnect API and direct database access. Revocation invalidates existing platform sessions and requires a new sign-in. Elevated role holders must first go through independent access removal.</p><label className="field">Action<select name="action"><option value="revoke_sessions">Revoke existing sessions</option><option value="suspend">Suspend platform access</option><option value="reinstate">Reinstate access (new sign-in required)</option></select></label><label className="field">Reason<textarea name="reason" required minLength={10} maxLength={2000}/></label><button className="btn btn-secondary" disabled={busy}>Review account protection</button></form>}
     {staff && resource === 'adoptions' && <form className="workflow-form" onSubmit={submit(`/admin/adoptions/${id}/appointments`, 'POST', d => ({ ...d, scheduled_at: new Date(d.scheduled_at).toISOString() }))}><h3>Schedule an interview</h3><label className="field">Date and time<input name="scheduled_at" type="datetime-local" required /></label><label className="field">Meeting location<input name="location" required minLength={5} /></label><label className="field">Notes<textarea name="notes" /></label><button className="btn btn-primary" disabled={busy}>Schedule appointment</button></form>}
     {staff && resource === 'rescue' && <form className="workflow-form" onSubmit={submit(`/admin/rescue/${id}/assign`)}><h3>Assign a rescuer</h3><Lookup kind="rescuers" name="assignee_id" label="Authorized rescuer" /><label className="field">Assignment notes<textarea name="notes" /></label><button className="btn btn-primary" disabled={busy || row.status !== 'verified'}>Assign verified report</button></form>}
-    {resource === 'pets' && <form className="workflow-form" onSubmit={submit(`/admin/pets/${id}/behavior`, 'PATCH', d => {
+    {resource === 'pets' && permissions.some(p=>['animals.health','animals.manage'].includes(p)) && <form className="workflow-form" onSubmit={submit(`/admin/pets/${id}/behavior`, 'PATCH', d => {
       const result: Row = { temperament: String(d.temperament || '').split(',').map(x => x.trim()).filter(Boolean), suitable_homes: d.suitable_homes ? String(d.suitable_homes).split(',') : [], notes: d.notes };
       for (const key of ['energy_level','care_hours_daily','max_hours_alone','experience_required','grooming_level','exercise_minutes']) result[key] = d[key] === '' ? null : Number(d[key]);
       for (const key of ['good_with_children','good_with_dogs','good_with_cats','needs_outdoor_space']) result[key] = d[key] === '' ? null : d[key] === 'true';

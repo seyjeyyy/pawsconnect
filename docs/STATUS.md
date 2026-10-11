@@ -1,5 +1,7 @@
 # Build status
 
+Local optimization work (not deployed): migration 018 adds explicit staff module permissions while retaining legacy memberships and every account/record. The interface uses User, Staff and Super administrator experiences, targeted synchronization, deferred reports and a responsive workspace drawer. See [optimization audit](OPTIMIZATION_AUDIT.md), [permission matrix and rollout/rollback](ACCOUNT_PERMISSIONS.md), and [implementation evidence](OPTIMIZATION_REPORT.md). Apply SQL and verify schema 018 before deploying this working tree.
+
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
 ## Dedicated sign-in destinations and workspace layout

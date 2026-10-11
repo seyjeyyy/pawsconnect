@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { optimizeListingImage } from '../lib/images';
 
 export function UploadField({ bucket, onChange, multiple = false, onBusyChange }: {
   bucket: 'listing-images' | 'adoption-documents' | 'rescue-evidence';
@@ -19,8 +20,9 @@ export function UploadField({ bucket, onChange, multiple = false, onBusyChange }
         if (!supabase) throw new Error('Storage is unavailable until Supabase is connected.');
         if (files.length > (multiple ? 6 : 1)) throw new Error('Select no more than six files.');
         const paths: string[] = [];
-        for (const file of files) {
-          if (file.size > 5 * 1024 * 1024) throw new Error('Each file must be 5 MB or smaller.');
+        for (const original of files) {
+          if (original.size > 5 * 1024 * 1024) throw new Error('Each file must be 5 MB or smaller.');
+          const file = bucket === 'listing-images' ? await optimizeListingImage(original) : original;
           const upload = await api<{ path: string; token: string }>('/uploads/signed-url', { method: 'POST', body: JSON.stringify({ bucket, filename: file.name, content_type: file.type, size: file.size }) });
           const result = await supabase.storage.from(bucket).uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
           if (result.error) throw result.error;

@@ -11,19 +11,7 @@ connectedAdminRouter.get('/lookups/:kind', async (req, res) => {
   const kind = z.enum(['rescuers','drivers','vehicles','pets','categories']).parse(req.params.kind);
   const { q } = z.object({ q: z.string().max(100).default('') }).parse(req.query);
   if (kind === 'rescuers' || kind === 'drivers') {
-    const roles = kind === 'drivers' ? ['shelter_driver'] : ['rescue_personnel','volunteer'];
-    const rows = assertDb(await db().from('user_roles').select('user_id,role_name,profiles!user_roles_user_id_fkey(full_name)').in('role_name', roles));
-    const approved = kind === 'drivers'
-      ? assertDb(await db().from('shelter_drivers').select('user_id').eq('is_active', true))
-      : assertDb(await db().from('volunteer_profiles').select('user_id').eq('status', 'approved'));
-    const approvedIds = new Set(approved.map((r: { user_id: string }) => r.user_id));
-    const unique = new Map<string, { id: string; name: string }>();
-    for (const row of rows) {
-      if ((kind === 'drivers' || row.role_name === 'volunteer') && !approvedIds.has(row.user_id)) continue;
-      const name = row.profiles?.full_name || row.user_id;
-      if (name.toLowerCase().includes(q.toLowerCase())) unique.set(row.user_id, { id: row.user_id, name });
-    }
-    res.json({ data: [...unique.values()].slice(0, 100) }); return;
+    res.json({data:assertDb(await db().rpc('workspace_people_lookup',{p_actor_id:req.actor!.id,p_kind:kind,p_search:safeSearch(q)}))});return;
   }
   const table = kind === 'vehicles' ? 'shelter_vehicles' : kind === 'categories' ? 'product_categories' : 'pets';
   let query = db().from(table).select('id,name').ilike('name', `%${safeSearch(q)}%`).order('name').limit(100);

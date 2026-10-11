@@ -1,0 +1,102 @@
+{
+  "scope": "Local Vite production build; chunk sizes are not Core Web Vitals",
+  "baseline": {
+    "entry": {
+      "bytes": 816640,
+      "gzipBytes": 248560
+    },
+    "account": {
+      "bytes": 428220,
+      "gzipBytes": 124530
+    },
+    "note": "Rounded values captured from the original build before edits"
+  },
+  "measuredAt": "2026-10-11T16:07:33.734Z",
+  "modules": [
+    {
+      "file": "Account-hw6eCs-p.js",
+      "bytes": 61729,
+      "gzipBytes": 17141
+    },
+    {
+      "file": "Adoption-BJ5bKS6W.js",
+      "bytes": 6405,
+      "gzipBytes": 2506
+    },
+    {
+      "file": "Auth-Cjaxs5sm.js",
+      "bytes": 5297,
+      "gzipBytes": 2256
+    },
+    {
+      "file": "Catalogs-B9TG-qLw.js",
+      "bytes": 5869,
+      "gzipBytes": 2113
+    },
+    {
+      "file": "eye-6V0uA3xb.js",
+      "bytes": 630,
+      "gzipBytes": 338
+    },
+    {
+      "file": "FinancialOverview-BKa7Xne8.js",
+      "bytes": 368545,
+      "gzipBytes": 108236
+    },
+    {
+      "file": "GroupedNav-Bt_MB7WH.js",
+      "bytes": 1496,
+      "gzipBytes": 794
+    },
+    {
+      "file": "index-ChvBsMs_.js",
+      "bytes": 698051,
+      "gzipBytes": 209007
+    },
+    {
+      "file": "LocationPicker-DKEiahBd.js",
+      "bytes": 154749,
+      "gzipBytes": 45261
+    },
+    {
+      "file": "Operations-CWnk_v9k.js",
+      "bytes": 26149,
+      "gzipBytes": 8081
+    },
+    {
+      "file": "schemas-Cukj-vtN.js",
+      "bytes": 120657,
+      "gzipBytes": 36883
+    },
+    {
+      "file": "Services-QLXcSZPZ.js",
+      "bytes": 37599,
+      "gzipBytes": 11154
+    },
+    {
+      "file": "Shop-Csg84RDa.js",
+      "bytes": 14706,
+      "gzipBytes": 4677
+    },
+    {
+      "file": "trash-2-DyoqkhEQ.js",
+      "bytes": 354,
+      "gzipBytes": 247
+    },
+    {
+      "file": "UploadField-SRRO39mp.js",
+      "bytes": 2518,
+      "gzipBytes": 1269
+    },
+    {
+      "file": "users-DA2mgz7u.js",
+      "bytes": 373,
+      "gzipBytes": 256
+    },
+    {
+      "file": "WorkspaceOverview-XgduCzFF.js",
+      "bytes": 2439,
+      "gzipBytes": 1196
+    }
+  ]
+}

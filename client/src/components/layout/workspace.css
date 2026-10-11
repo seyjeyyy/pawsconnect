@@ -8,6 +8,37 @@
 .workspace-user { display: flex; align-items: center; gap: .4rem; }
 .workspace-user span { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-shell .tour-invite { position: static; margin: 0 auto 1.5rem; }
+.workspace-shell { background: #f5f6f3; }
+.workspace-shell .page { padding-block: 1.75rem; }
+.workspace-shell .dashboard-main > .feature-toolbar h1 { font-size: clamp(1.55rem, 3vw, 2.1rem); margin-block: .25rem; }
+.workspace-shell .card { box-shadow: 0 2px 7px #20322a05; border: 1px solid #dfe5de; border-radius: 14px; }
+.workspace-shell .account-sidebar { background: white; border: 1px solid #dfe5de; border-radius: 14px; }
+.workspace-shell .stat-grid { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: .8rem; }
+.workspace-shell .stat-card { padding: 1rem; }
+.workspace-shell .stat-card strong { font-size: 1.8rem; }
+.sidebar-container { position: relative; min-width: 0; }
+.sidebar-collapse { display: flex; margin: 0 0 .5rem auto; }
+.sidebar-mobile-trigger { display: none; }
+.dashboard-layout.sidebar-collapsed { grid-template-columns: 44px minmax(0,1fr); }
+.desktop-sidebar[hidden] { display: none; }
+.sidebar-overlay { position: fixed; inset: 0; background: #10281d80; z-index: 150; }
+.sidebar-drawer { position: fixed; inset: 0 auto 0 0; width: min(350px,90vw); padding: 1rem; background: #f5f6f3; z-index: 151; overflow: auto; }
+.sidebar-drawer .account-sidebar { position: static; width: 100%; }
+.permission-grid { border: 1px solid var(--line); border-radius: 10px; display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: .75rem; padding: 1rem; }
+.permission-grid label { display: flex; gap: .6rem; align-items: center; min-height: 44px; }
+.permission-grid input { width: 18px; height: 18px; }
+.workspace-shell .table-wrap { max-width: 100%; overflow-x: auto; }
+.workspace-shell td { max-width: 340px; overflow-wrap: anywhere; }
+.workspace-shell .table-actions button { min-height: 40px; }
+.workspace-breadcrumb { padding-top: .8rem; display: flex; gap: .5rem; align-items: center; font-size: .8rem; color: var(--muted); }
+.workspace-shell .dashboard-main { min-width: 0; }
+@media (max-width: 900px) {
+  .sidebar-collapse, .desktop-sidebar { display: none; }
+  .sidebar-mobile-trigger { display: inline-flex; }
+  .dashboard-layout, .dashboard-layout.sidebar-collapsed { grid-template-columns: minmax(0,1fr); }
+  .workspace-shell .page { padding-block: 1rem; }
+  .workspace-shell .table-actions { flex-wrap: wrap; }
+}
 @media (max-width: 700px) {
   .workspace-header-inner { align-items: flex-start; flex-direction: column; gap: .8rem; }
   .workspace-shortcuts { justify-content: flex-start; gap: .75rem; }

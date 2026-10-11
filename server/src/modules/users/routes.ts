@@ -26,7 +26,9 @@ userRouter.post('/contact', optionalAuth, async (req, res) => {
 });
 userRouter.get('/auth/me', authenticate, async (req, res) => {
   const profile = assertDb(await db().from('profiles').select('*').eq('id', req.actor!.id).single());
-  res.json({ data: { ...profile, email: req.actor!.email, roles: req.actor!.roles } });
+  const roles=req.actor!.roles;
+  const account_role=roles.includes('super_administrator')?'super_administrator':roles.some(r=>['administrator','shelter_staff','veterinarian','rescue_personnel','shelter_driver'].includes(r))?'staff':'user';
+  res.json({ data: { ...profile, email: req.actor!.email, roles, account_role, permissions:req.actor!.permissions } });
 });
 userRouter.get('/profile', authenticate, async (req, res) => {
   res.json({ data: assertDb(await db().from('profiles').select('*').eq('id', req.actor!.id).single()) });
@@ -62,7 +64,7 @@ userRouter.get('/payments/mine', authenticate, async (req, res) => {
 const uploadSchema = z.object({ bucket: z.enum(['rescue-evidence', 'adoption-documents', 'listing-images']), filename: z.string().min(1).max(200), content_type: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']), size: z.number().int().positive().max(5 * 1024 * 1024) }).strict();
 userRouter.post('/uploads/signed-url', authenticate, async (req, res) => {
   const input = uploadSchema.parse(req.body);
-  if (input.bucket === 'listing-images' && !isStaff(req.actor!.roles)) throw new ApiError(403, 'FORBIDDEN', 'Only shelter staff may upload public listing images.');
+  if (input.bucket === 'listing-images' && (!isStaff(req.actor!.roles) || !req.actor!.permissions?.some(p=>['animals.manage','store.manage'].includes(p)))) throw new ApiError(403, 'FORBIDDEN', 'Listing management permission is required.');
   if (input.content_type === 'application/pdf' && input.bucket !== 'adoption-documents') throw new ApiError(400, 'INVALID_FILE_TYPE', 'This bucket accepts images only.');
   const extensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
   const path = `${req.actor!.id}/${randomUUID()}.${extensions[input.content_type]}`;
@@ -71,9 +73,10 @@ userRouter.post('/uploads/signed-url', authenticate, async (req, res) => {
 });
 userRouter.post('/uploads/read-url', authenticate, async (req, res) => {
   const { bucket, path } = z.object({ bucket: z.enum(['rescue-evidence', 'adoption-documents']), path: z.string().max(500).regex(/^[a-f0-9-]{36}\/[a-f0-9-]{36}\.(jpg|png|webp|pdf)$/) }).strict().parse(req.body);
-  if (!path.startsWith(`${req.actor!.id}/`) && !isStaff(req.actor!.roles)) {
+  const canReview = isStaff(req.actor!.roles) && req.actor!.permissions?.includes(bucket === 'rescue-evidence' ? 'rescue.manage' : 'adoptions.review');
+  if (!path.startsWith(`${req.actor!.id}/`) && !canReview) {
     let allowed = false;
-    if (bucket === 'rescue-evidence' && req.actor!.roles.some(role => ['rescue_personnel','volunteer'].includes(role))) {
+    if (bucket === 'rescue-evidence' && req.actor!.permissions?.includes('rescue.assigned') && req.actor!.roles.some(role => ['rescue_personnel','volunteer'].includes(role))) {
       const photo = assertDb(await db().from('stray_report_photos').select('report_id').eq('storage_path', path).maybeSingle());
       if (photo) allowed = Boolean(assertDb(await db().from('rescue_assignments').select('id').eq('report_id', photo.report_id).eq('assigned_to', req.actor!.id).in('status', ['assigned','in_progress','completed']).maybeSingle()));
     }

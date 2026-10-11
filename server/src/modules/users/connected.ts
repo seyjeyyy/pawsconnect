@@ -31,7 +31,9 @@ connectedRouter.get('/account/records/:kind', async (req, res) => {
   const { page, limit, q } = pagination.parse(req.query);
   let query = db().from(resource.table).select(resource.select, { count: 'exact' }).eq(resource.owner ?? 'user_id', req.actor!.id);
   if (q && resource.search) query = query.ilike(resource.search, `%${safeSearch(q)}%`);
-  const result = await query.order('created_at', { ascending: false }).range((page - 1) * limit, page * limit - 1);
+  const kind=String(req.params.kind);
+  const stableKey=kind==='favorites'?'pet_id':kind==='wishlist'?'product_id':'id';
+  const result = await query.order('created_at', { ascending: false }).order(stableKey,{ascending:false}).range((page - 1) * limit, page * limit - 1);
   res.json({ data: assertDb(result), meta: { total: result.count, page, limit } });
 });
 connectedRouter.post('/favorite-pets', async (req, res) => {

@@ -64,7 +64,7 @@ describe('operations integrity and authorization',()=>{
   const job=(await row("select to_jsonb(public.run_operations_job('expire_order_reservations',$1)) r",[one])).r;
   expect(job.status).toBe('succeeded');expect(job.affected_rows).toBe(0);expect(job.finished_at).toBeTruthy();
   const metrics=(await row('select public.operations_diagnostics($1) r',[one])).r;
-  expect(metrics.schema_version).toBe('017');expect(metrics.database_bytes).toBeGreaterThan(0);
+  expect(metrics.schema_version).toBe('018');expect(metrics.database_bytes).toBeGreaterThan(0);
  });
  it('rechecks approval access before dispatch and blocks unresolved target outcomes',async()=>{
   const backup=(await row("select id from operations_requests where kind='backup' and status='succeeded' limit 1")).id;
@@ -93,7 +93,7 @@ describe('operations integrity and authorization',()=>{
   await db.query("select public.change_account_access($1,$2,'reinstate','Investigation completed and access restored')",[one,buyer]);
   expect((await row('select public.account_session_allowed($1,$1) allowed',[buyer])).allowed).toBe(false);
   // A new provider sign-in creates a different session; refreshing the old one cannot bypass the cutoff.
-  const newSession=crypto.randomUUID();await db.query('insert into auth.sessions(id,user_id,created_at) values($1,$2,clock_timestamp())',[newSession,buyer]);
+  const newSession=crypto.randomUUID();await db.query("insert into auth.sessions(id,user_id,created_at) values($1,$2,(select sessions_valid_after + interval '1 second' from public.account_access_controls where user_id=$2))",[newSession,buyer]);
   expect((await row('select public.account_session_allowed($1,$2) allowed',[buyer,newSession])).allowed).toBe(true);
   await expect(db.query("select public.change_account_access($1,$2,'suspend','Attempting elevated suspension')",[one,two])).rejects.toThrow(/independent approval/);
  });

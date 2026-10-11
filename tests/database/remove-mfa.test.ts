@@ -15,7 +15,7 @@ it('upgrades 016 to password-only access without restoring revoked sessions or l
   await applyMigrations(db,file=>file>prior);
   expect((await db.query('select * from account_access_controls')).rows).toEqual(restrictions);
   expect((await db.query('select * from audit_logs order by id')).rows).toEqual(audit);
-  expect((await asUser(db,system,tx=>tx.query('select schema_version from operations_config'))).rows).toEqual([{schema_version:'017'}]);
+  expect((await asUser(db,system,tx=>tx.query('select schema_version from operations_config'))).rows).toEqual([{schema_version:'018'}]);
   expect((await asUser(db,customer,tx=>tx.query('select * from profiles'))).rows).toEqual([]);
   await db.query('delete from auth.sessions where user_id=$1',[system]);
   expect((await asUser(db,system,tx=>tx.query('select * from operations_config'))).rows).toEqual([]);

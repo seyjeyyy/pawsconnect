@@ -19,7 +19,7 @@ const CartPage = lazy(() => shop().then(m => ({ default: m.CartPage })));
 const CheckoutPage = lazy(() => shop().then(m => ({ default: m.CheckoutPage })));
 const PaymentReturnPage = lazy(() => shop().then(m => ({ default: m.PaymentReturnPage })));
 const account = () => import('./pages/Account');
-const AuthPage = lazy(() => account().then(m => ({ default: m.AuthPage })));
+const AuthPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.AuthPage })));
 const DashboardPage = lazy(() => account().then(m => ({ default: m.DashboardPage })));
 const AdminPage = lazy(() => account().then(m => ({ default: m.AdminPage })));
 const OperationsPage = lazy(() => import('./pages/Operations'));

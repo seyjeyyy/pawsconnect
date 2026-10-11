@@ -4,7 +4,7 @@ import { ApiError, assertDb } from '../utils/errors.js';
 
 declare global {
   namespace Express {
-    interface Request { actor?: { id: string; email?: string; roles: string[] }; }
+    interface Request { actor?: { id: string; email?: string; roles: string[]; permissions?: string[] }; }
   }
 }
 export const authenticate: RequestHandler = async (req, _res, next) => {
@@ -20,12 +20,16 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   if (typeof sessionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) throw new ApiError(401,'INVALID_SESSION','Sign in again to establish a current session.');
   const sessionAllowed=assertDb(await client.rpc('account_session_allowed',{p_user_id:data.user.id,p_session_id:sessionId}));
   if(!sessionAllowed) throw new ApiError(401,'SESSION_REVOKED','This session no longer has platform access. Sign in again or contact support.');
-  const memberships = assertDb<{ roles: { name: string } | { name: string }[] | null }[]>(await client.from('user_roles').select('roles(name)').eq('user_id', data.user.id));
+  const [membershipResult, permissionResult] = await Promise.all([
+    client.from('user_roles').select('roles(name)').eq('user_id', data.user.id),
+    client.rpc('account_permissions',{p_user_id:data.user.id}),
+  ]);
+  const memberships = assertDb<{ roles: { name: string } | { name: string }[] | null }[]>(membershipResult);
   const roles = memberships.flatMap(row => {
     const role = row.roles;
     return Array.isArray(role) ? role.map(r => r.name) : role ? [role.name] : [];
   });
-  req.actor = { id: data.user.id, email: data.user.email, roles };
+  req.actor = { id: data.user.id, email: data.user.email, roles, permissions: assertDb<string[]>(permissionResult) ?? [] };
   next();
 };
 export const optionalAuth: RequestHandler = async (req, res, next) => {

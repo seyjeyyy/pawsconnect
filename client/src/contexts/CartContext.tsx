@@ -18,7 +18,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (!user) { toast.info('Sign in to save a shopping cart to your account.'); return; }
     if (lock.current) return;
     lock.current = true; setBusy(true);
-    try { await api(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); await cache.invalidateQueries({ queryKey: ['cart', user.id] }); if (success) toast.success(success); }
+    try { await api(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); await cache.invalidateQueries({ queryKey: ['cart', user.id] },{cancelRefetch:false}); if (success) toast.success(success); }
     catch (failure) { toast.error((failure as Error).message); }
     finally { lock.current = false; setBusy(false); }
   }
