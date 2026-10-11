@@ -2,7 +2,7 @@
 
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
-Current totals: 138 unit, API and database tests and 12 browser tests pass; both workspaces typecheck and build. Live at https://pawsconnect-one.vercel.app. The live database is at migration 013; migration 014 is written and tested but not yet applied (see "Roles").
+Current totals: 138 unit, API and database tests and 12 browser tests pass; both workspaces typecheck and build. Live at https://pawsconnect-one.vercel.app. The live database is at migration 014.
 
 ## Where the data comes from
 
@@ -75,7 +75,7 @@ None of it has been deleted or altered by the migrations. Removing it before rea
 
 Each account lands on, and can only reach, what its role is for. The API enforces this, with tests per role.
 
-System administration and shelter operations are separate lines of authority; neither role implies the other. The API enforces the split now. Migration 014 enforces the same split for anyone using the database directly with their own sign-in. Until it is applied, a super administrator could still read shelter records that way, and a shelter administrator could still read other accounts' roles and the audit trail.
+System administration and shelter operations are separate lines of authority; neither role implies the other. The API enforces the split, and migration 014 (applied) enforces the same split for anyone using the database directly with their own sign-in. Checked on the live database: the super administrator reads the audit trail and all role assignments but no orders or customer addresses; the administrator reads orders and addresses but not the audit trail or other accounts' roles. Role assignment was re-checked on the live site afterwards: refused for the administrator, working for the super administrator, and granting administrator access still requires a request and a second approver.
 
 | Role | Home | Reach |
 | --- | --- | --- |
