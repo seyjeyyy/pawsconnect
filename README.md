@@ -22,7 +22,7 @@ npm install
 npm run dev          # API on http://127.0.0.1:4000, web on http://localhost:5173
 ```
 
-With no configuration the app starts in **preview mode**: the storefront, pet listings and matchmaking quiz work against clearly labelled sample data, and anything that needs an account says it is not connected. Nothing is purchasable and no data is saved.
+With no configuration the app still starts, but it has nothing to show: every listing, quiz and account page reports that the service is not connected. There is no built-in sample data. Connect Supabase to see it work.
 
 ## Connect Supabase
 
@@ -45,6 +45,8 @@ With no configuration the app starts in **preview mode**: the storefront, pet li
    ```
 
    After that, administrators assign roles from **Shelter workspace → People & access**. Self-registration only ever grants the community roles (buyer, adopter, donor, community reporter).
+
+6. Optionally create the first super administrator the same way, with `'super_administrator'` in place of `'administrator'`. That role adds the security centre (recorded refusals, alerts) and decides requests to grant or remove administrator access. Once one exists, further administrators and super administrators are added by request and approval in the workspace, not by SQL.
 
 ## Optional integrations
 
@@ -75,7 +77,7 @@ Service zones are not pre-loaded. An administrator must add verified WGS84 bound
 | `npm run build` | Production build of both workspaces |
 | `npm run typecheck` | TypeScript check of both workspaces |
 | `npm test` | Unit, API and database tests (no external services needed) |
-| `npm run test:e2e` | Browser tests on desktop and mobile. First run: `npx playwright install chromium` |
+| `npm run test:e2e` | Browser tests on desktop and mobile, against their own unconfigured servers. First run: `npx playwright install chromium` |
 | `npm start` | Run the built API |
 
 ## How the tests check the database

@@ -42,13 +42,29 @@ In rough order:
 - Sidebar menus grouped by category (`client/src/components/GroupedNav.tsx`).
 - Demo data added to the live database (see "Live data").
 
+### Second pass: everything from the database (2026-10-11)
+
+Migrations 009 to 013, applied to the live database and verified there.
+
+- **No sample data in production paths.** The built-in sample catalog and matchmaking fallback are gone. Without Supabase the API answers "unavailable" and the pages say so. Sample fixtures live only under `tests/fixtures/`.
+- **Persisted customer state:** server-side cart, saved pets (`favorite_pets`), inquiries with staff replies, refund requests. `GET /api/account/summary` and `GET /api/account/records/:kind` (`server/src/modules/users/connected.ts`) serve every account list, always filtered by the signed-in user.
+- **Uploads:** `client/src/components/UploadField.tsx` with signed upload and read URLs. The `rescue-evidence` and `adoption-documents` buckets are private; only the owner and staff get a short-lived link.
+- **Workspace pickers:** `GET /api/admin/lookups/:kind` supplies people, vehicles and pets, so forms no longer need pasted ids. Staff forms for interviews, rescue assignment, behaviour assessments and volunteer tasks.
+- **Realtime:** `client/src/contexts/SyncContext.tsx` subscribes to the user's own `notifications` rows and refetches open queries; polling every 30 seconds is the fallback. Workflow functions and triggers write the notification; row payloads of other tables are never broadcast.
+- **Super administrator and security monitoring:** see "Roles" and "Security events" below.
+- **Direct staff writes are closed.** `authenticated` can no longer insert, update or delete catalog, pet or zone rows through Supabase directly; every change goes through the API. Public reads no longer expose `cost_centavos` or behaviour-profile notes.
+- **Money is reported from live-mode payments only.** `payment_transactions.livemode` is set from the Stripe key in use. `admin_metrics` excludes test payments from every revenue figure and counts them separately as `test_payments`. With a test key, revenue is correctly zero.
+- Browser tests start their own preview-mode servers (`tests/helpers/start-e2e.mjs`) and never touch a configured database.
+- `tests/database/upgrade.test.ts` applies new migrations on top of a populated database at the previous version. Extend it when you add a migration that touches existing rows.
+
 ## Roles
 
 Every registered account holds the four community roles (buyer, adopter, donor, community_reporter). Privileged roles are granted only by an administrator through `assign_user_role`.
 
 | Role | Lands on | Can reach |
 | --- | --- | --- |
-| administrator | `/admin/overview` | Everything |
+| super_administrator | `/admin/overview` | Everything an administrator can, plus security events, alerts and elevated-access approvals |
+| administrator | `/admin/overview` | Everything except the security centre |
 | shelter_staff | `/admin/overview` | Everything except users and audit logs |
 | veterinarian | `/admin/pets` | Pets, health records |
 | rescue_personnel | `/admin/rescue` | Rescue reports assigned to them |
@@ -62,6 +78,12 @@ Two places define this and they must agree:
 - `workspaceAccess` in `server/src/modules/analytics/admin.ts` decides what the API allows. It is the one that matters for security. `tests/api/workspace-access.test.ts` covers each role.
 
 The server uses the service role, which bypasses RLS. Every query for a user's own data must filter by the actor's id in code; RLS is a second line of defence, not the first.
+
+`super_administrator` counts as `administrator` wherever a role is checked (`has_role` in SQL, `authorize` and `isStaff` on the server). Granting or removing `administrator` or `super_administrator` cannot be done directly: an administrator files a request (`critical_approvals`) and a different super administrator decides it. The first super administrator is granted by inserting into `user_roles` in SQL, because nobody else can.
+
+## Security events
+
+`server/src/middleware/security.ts` records every 403 given to a signed-in user as a row in `security_events` (method and route only: no tokens, bodies or query strings). Five or more within ten minutes for one account raises one open row in `security_alerts`, which a super administrator resolves with notes. These tables hold only what actually happened. Never insert example events or alerts, and note that probing refused routes in a test against the live site will raise a real alert that then needs resolving.
 
 ## Conventions
 
@@ -83,7 +105,8 @@ npm run build
 ```
 
 - `npm test` is forced into preview mode by `vitest.config.ts` (blank Supabase and Stripe variables), so it never touches live services even when `server/.env` exists. Keep it that way. Database tests run the real migrations on PGlite with PostGIS; `tests/helpers/db.ts` adds the pieces of Supabase the schema depends on.
-- `npm run test:e2e` assumes preview mode and currently fails on a machine with Supabase configured. It needs its own preview-mode server; this is not done.
+- `npm run test:e2e` starts its own preview-mode API and web server on separate ports, so it is safe on a configured machine. It checks that the app is honest when the database is unavailable; it does not exercise signed-in flows.
+- Applying a migration to the live database: a person pastes it into the Supabase SQL editor. For several at once, concatenate them inside `begin; ... commit;` into `supabase/APPLY_<range>.sql` (git-ignored) so it is one paste and one transaction. Apply migrations before deploying code that needs them.
 - Deploy: `npx vercel build --prod` then `npx vercel deploy --prebuilt --prod`. Pushing to GitHub does not deploy; the two are not linked.
 - Local Stripe webhooks: `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed --forward-to localhost:4000/api/webhooks/stripe`.
 
@@ -91,7 +114,8 @@ npm run build
 
 The production database holds **demo data**, created through the API as each demo account: 10 products, 6 pets, 3 service zones, and orders, applications, reports, transport requests, donations and volunteer tasks. Payments in it are Stripe test-mode payments.
 
-- Ten demo accounts exist, one per role, as `<role>@pawsconnect.test` (dots for underscores). Ask the project owner for the password; it is not in the repository.
+- Eleven demo accounts exist, one per role including `super.administrator`, as `<role>@pawsconnect.test` (dots for underscores). Ask the project owner for the password; it is not in the repository.
+- The security log holds 18 refusals and two resolved alerts from the verification run on 2026-10-11, and there is one rejected elevated-access request and one pending refund request from the same run. They are real records of that run, not seeded examples.
 - The three service zones are a plain rectangle around Malolos named "Demo ... zone". They are not real boundaries.
 - Local development uses the same database as the live site. Anything you create or delete locally is created or deleted in production. There is no separate development database.
 
@@ -107,8 +131,11 @@ The production database holds **demo data**, created through the API as each dem
 
 See "Not built" in [docs/STATUS.md](docs/STATUS.md). The ones most likely to matter next:
 
-- The workspace uses generic tables and forms. Assigning a driver, vehicle or rescuer, and adding a health record, means pasting record ids. There is no form for behaviour profiles, no map-based zone editor, no rescue or transport map.
-- The adoption, rescue, transport, donation and volunteer workflows have been run live but have no automated tests.
-- Notifications are stored and listed only; no realtime, email or SMS.
-- No photo upload in the stray report or adoption forms, no refunds screen, no product variants in the storefront.
+- Refunds stop at the request: a customer can ask and staff can see it, but nothing calls Stripe to refund, and there is no approve or decline action.
+- Security monitoring has one rule (repeated refusals). Sign-in attempts are not imported from Supabase Auth, so failed logins are not visible.
+- No map-based zone editor (zones are pasted as GeoJSON), no rescue or transport map.
+- The upload and staff forms added in the second pass were verified through the API and by loading each screen; they have not each been clicked through by hand in a browser.
+- Notifications reach open pages over Realtime; there is no email or SMS.
+- No product variants in the storefront.
+- The Edge Function in `supabase/functions/maintenance` is not deployed and not needed while `pg_cron` runs the expiry jobs.
 - `client/public/images/hero-dog.jpg` has no recorded source or licence.
