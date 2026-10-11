@@ -9,7 +9,7 @@ async function fixture(page:Page,role='super_administrator'){
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   let data:unknown=[],meta:unknown=undefined;
-  if(path==='/api/auth/me')data={...user,full_name:'Fixture operator',roles:[role]};
+  if(path==='/api/auth/me')data={...user,full_name:'Fixture operator',roles:[...new Set([role,'buyer','adopter','donor','community_reporter'])]};
   else if(path==='/api/cart')data={items:[]};
   else if(path==='/api/health')data={status:'ok',payment_mode:'unavailable'};
   else if(path==='/api/operations/status')data={active:false};
@@ -35,6 +35,49 @@ test('all IT modules render, have bounded layouts and show unconfigured integrat
  await page.screenshot({path:`test-results/operations-${test.info().project.name}.png`,fullPage:true});
  expect(errors).toEqual([]);
 });
+
+for (const role of ['super_administrator','administrator','shelter_staff','veterinarian','rescue_personnel','shelter_driver']) {
+ test(`${role} keeps its workspace menu in profile and settings`,async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await fixture(page,role);
+  await page.goto('/admin');
+  await expect(page.getByRole('link',{name:'Profile & settings',exact:true})).toBeVisible();
+  const workspaceLinks=await page.getByRole('navigation',{name:'Shelter navigation',exact:true}).locator('a').evaluateAll(links=>links.map(link=>link.getAttribute('href')));
+  expect(workspaceLinks.length).toBeGreaterThan(0);
+  await page.getByRole('link',{name:'Profile & settings',exact:true}).click();
+  await expect(page.locator('.dashboard-main h1')).toHaveText('My profile');
+  const menu=page.getByRole('navigation',{name:'Account navigation',exact:true});
+  const assertMenu=async()=>{
+   expect(await menu.locator('a[href^="/admin/"]').evaluateAll(links=>links.map(link=>link.getAttribute('href')).filter(href=>href!=='/admin/operations'))).toEqual(workspaceLinks);
+   expect(await menu.locator('a[href^="/account/"]').evaluateAll(links=>links.map(link=>link.getAttribute('href')))).toEqual(['/account/notifications','/account/profile','/account/settings']);
+   await expect(menu.locator('a[href="/admin/operations"]')).toHaveCount(role==='super_administrator'?1:0);
+  };
+  await assertMenu();
+  await menu.getByRole('link',{name:'Account settings',exact:true}).click();
+  await expect(page.locator('.dashboard-main h1')).toHaveText('Account settings');
+  await expect(menu.getByRole('link',{name:'Account settings',exact:true})).toHaveAttribute('aria-current','page');
+  await assertMenu();
+  await page.reload();
+  await expect(page.locator('.dashboard-main h1')).toHaveText('Account settings');
+  await assertMenu();
+  await page.goto('/account/orders');
+  await expect(page).toHaveURL(/\/account\/profile$/);
+  expect(errors).toEqual([]);
+ });
+}
+
+for (const role of ['buyer','volunteer']) {
+ test(`${role} retains its community menu in account settings`,async({page})=>{
+  await fixture(page,role);await page.goto('/account/settings');
+  await expect(page.locator('.dashboard-main h1')).toHaveText('Account settings');
+  const menu=page.getByRole('navigation',{name:'Account navigation',exact:true});
+  await expect(menu.locator('a[href="/account/orders"]')).toHaveCount(1);
+  await expect(menu.locator('a[href="/account/applications"]')).toHaveCount(1);
+  await expect(menu.locator('a[href="/account/volunteer"]')).toHaveCount(role==='volunteer'?1:0);
+  await expect(menu.locator('a[href="/admin"]')).toHaveCount(role==='volunteer'?1:0);
+  await expect(menu.locator('a[href^="/admin/"]')).toHaveCount(0);
+ });
+}
 test('maintenance confirmation cancels safely and submits once after confirmation',async({page})=>{
  const writes=await fixture(page);await page.goto('/admin/operations/maintenance');
  await page.getByLabel('Reason for change').fill('Isolated browser verification');

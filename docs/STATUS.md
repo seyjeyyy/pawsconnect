@@ -2,6 +2,12 @@
 
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
+## Profile and settings navigation
+
+Operational accounts now retain their role's workspace links when opening Profile & settings. Their personal menu contains profile, settings and notifications; customer shopping and adoption tabs no longer appear. Workspace links share the same role filtering, labels and ordering as the main workspace. Community accounts and volunteers retain their existing account menus.
+
+Verified with 36 isolated desktop/tablet/mobile browser checks, including all six operational roles with their community roles, navigation from the workspace, settings reloads and customer-menu regressions. Typechecking and both production builds passed (existing bundle-size and third-party annotation warnings remain). This UI fix requires no additional database migration; the pending 017 rollout below remains separate.
+
 ## Two-step verification removal (migration 017)
 
 At the project owner's request, authenticator enrollment/challenge screens, workspace MFA gates and recent-MFA API checks have been removed. New migration `202610110017_remove_mfa_requirement.sql` allows normal password sessions through the existing role and active-session policies. It preserves account suspensions, session cutoffs, worker-secret restrictions and independent two-person approvals. Historical MFA references below describe the earlier 015–016 release.

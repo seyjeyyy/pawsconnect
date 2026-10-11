@@ -70,7 +70,7 @@ const workspaceGroups: Record<string, string> = {
   donations: 'Community & finance', volunteers: 'Community & finance', expenses: 'Community & finance', contact_messages: 'Community & finance',
   users: 'Security & access', audit_logs: 'Security & access',
 };
-const personalTabs = accountTabs.map(item => item.key);
+const personalTabs = ['profile', 'settings', 'notifications'];
 const volunteerTab = { key: 'volunteer', label: 'Volunteer tasks', icon: Users };
 /** Customers get the full dashboard. Shelter personnel work in the workspace, so here they only keep their personal settings. */
 function accountTabsFor(roles: string[]) {
@@ -87,11 +87,13 @@ export function DashboardPage() {
   if (!user) return <div className="page"><div className="container card account-gate"><UserRound size={36} /><h1>Your caring corner of the world.</h1><p>Sign in to see your orders, adoption applications, reports, and shelter updates.</p><Link className="btn btn-primary" to="/auth/login?next=/account">Sign in to your account<ArrowRight size={17} /></Link></div></div>;
   const operational = isOperational(roles); const tabs = accountTabsFor(roles); const hasWorkspace = workspaceSections(roles).length > 0;
   if (operational && !tab) return <Navigate to="/admin" replace />;
+  if (operational && !personalTabs.includes(tab!)) return <Navigate to="/account/profile" replace />;
   async function logout() { try { await signOut(); navigate('/'); } catch (failure) { setError(messageOf(failure)); } }
   const current = tabs.find((item) => item.key === (tab === 'adoptions' ? 'applications' : tab)) || tabs.find(item => item.key === 'overview') || tabs[0];
   const name = profile?.full_name || '';
   const menu: NavItem[] = [
-    ...(operational ? [{ key: 'workspace', label: 'Back to workspace', icon: ChevronLeft, to: '/admin' }] : []),
+    ...(operational ? workspaceTabsFor(roles).map(item => ({ ...item, to: `/admin/${item.key}`, group: workspaceGroups[item.key] })) : []),
+    ...(roles.includes('super_administrator') ? [{ key: 'operations', label: 'IT Operations', icon: Settings, to: '/admin/operations' }] : []),
     ...tabs.map((item) => ({ ...item, to: `/account/${item.key}`, group: accountGroups[item.key] })),
     ...(!operational && hasWorkspace ? [{ key: 'assignments', label: 'Rescue assignments', icon: ShieldCheck, to: '/admin', group: accountGroups.assignments }] : []),
   ];
@@ -169,6 +171,15 @@ const adminFields: Record<string, AdminField[]> = {
 const adminColumns: Record<string, string[]> = { products: ['name', 'sku', 'price_centavos', 'stock_quantity', 'is_published'], categories: ['name', 'slug', 'is_active'], pets: ['name', 'species', 'size', 'status'], health: ['record_type', 'notes', 'occurred_at'], orders: ['id', 'user_id', 'total_centavos', 'status', 'created_at'], adoptions: ['id', 'pet_id', 'user_id', 'status'], rescue: ['id', 'animal_type', 'city', 'condition', 'status'], transport: ['id', 'pet_details', 'preferred_schedule', 'coverage_status', 'status'], alternatives: ['id', 'arrangement_type', 'status'], zones: ['name', 'service_type', 'province', 'is_active'], vehicles: ['name', 'plate_number', 'animal_capacity', 'is_active'], drivers: ['user_id', 'license_reference', 'is_active'], donations: ['id', 'donation_type', 'amount_centavos', 'status'], volunteers: ['user_id', 'skills', 'status'], users: ['id', 'full_name', 'phone', 'created_at'], expenses: ['description', 'category', 'amount_centavos', 'occurred_at'], audit_logs: ['action', 'entity_type', 'actor_id', 'created_at'], contact_messages: ['name', 'email', 'message', 'created_at'] };
 const workflowStates: Record<string, string[]> = { orders: ['processing', 'ready_for_shipment', 'shipped', 'delivered', 'cancelled'], adoptions: ['under_review', 'information_requested', 'interview', 'approved', 'rejected', 'awaiting_handover'], rescue: ['under_verification', 'verified', 'in_progress', 'resolved', 'closed', 'invalid', 'duplicate', 'declined', 'referred'], transport: ['under_review', 'picked_up', 'in_transit', 'arrived', 'completed', 'declined', 'cancelled'], alternatives: ['under_review', 'approved', 'declined', 'completed', 'cancelled'], donations: ['received', 'cancelled'], volunteers: ['under_review', 'approved', 'declined', 'inactive'] };
 
+function workspaceTabsFor(roles: string[]) {
+  const allowed = workspaceSections(roles);
+  const staff = isStaffRole(roles);
+  const systemRole = roles.includes('super_administrator');
+  const permitted = adminResources.filter(item => allowed.includes(item.key)).map(item => ({ ...item, label: staff ? item.label : fieldSectionLabels[item.key] ?? item.label }));
+  const rank = (key: string) => systemRole ? (systemSections.includes(key) ? systemSections.indexOf(key) : systemSections.length + (key === 'overview' ? 0 : 1)) : (key === 'overview' ? 0 : 1);
+  return permitted.map((item, index) => ({ item, index })).sort((a, b) => rank(a.item.key) - rank(b.item.key) || a.index - b.index).map(({ item }) => item);
+}
+
 export function AdminPage() {
   const { user, roles, loading, rolesLoading, rolesError } = useAuth(); const { section } = useParams();
   if (rolesError) return <div className="page container"><QueryState loading={false} error={rolesError}/></div>;
@@ -177,10 +188,7 @@ export function AdminPage() {
   if (!user || !allowed.length) return <div className="page container"><div className="card empty-state"><ShieldCheck size={36} /><h1>Shelter workspace</h1><p>This workspace is available to authorized shelter personnel. Sign in with your assigned account.</p>{user ? <Link className="btn btn-primary" to="/account">Go to my account</Link> : <Link className="btn btn-primary" to="/auth/login?next=/admin">Sign in</Link>}</div></div>;
   const staff = isStaffRole(roles); const operational = isOperational(roles);
   const systemRole = roles.includes('super_administrator');
-  const permitted = adminResources.filter((item) => allowed.includes(item.key)).map((item) => ({ ...item, label: staff ? item.label : fieldSectionLabels[item.key] ?? item.label }));
-  // Menu order: system sections first in the order listed above, then the shelter overview, then the rest.
-  const rank = (key: string) => systemRole ? (systemSections.includes(key) ? systemSections.indexOf(key) : systemSections.length + (key === 'overview' ? 0 : 1)) : (key === 'overview' ? 0 : 1);
-  const sections = permitted.map((item, index) => ({ item, index })).sort((a, b) => rank(a.item.key) - rank(b.item.key) || a.index - b.index).map(({ item }) => item);
+  const sections = workspaceTabsFor(roles);
   // Each role lands on its own first screen, and cannot open a section it has no access to.
   const current = sections.find((item) => item.key === section);
   if (!current) return <Navigate to={`/admin/${sections[0].key}`} replace />;
