@@ -15,9 +15,24 @@ function allowed(roles: string[], method: string, path: string) {
 const community = ['buyer', 'adopter', 'donor', 'community_reporter'];
 
 describe('workspace access by role', () => {
-  it.each([['administrator'], ['shelter_staff'], ['super_administrator']])('%s reaches every operational workspace route', (role) => {
-    for (const [method, path] of [['GET', '/analytics'], ['GET', '/orders'], ['GET', '/rescue'], ['POST', '/products'], ['PATCH', `/orders/${id}/status`], ['POST', '/inventory'], ['POST', '/health']]) {
-      expect(allowed([...community, role], method, path), `${method} ${path}`).toBe(true);
+  // Shelter operations and system administration are separate lines of authority.
+  const shelterRoutes = [['GET', '/analytics'], ['GET', '/orders'], ['GET', '/rescue'], ['GET', '/pets'], ['GET', '/payments'], ['GET', '/donations'], ['POST', '/products'], ['PATCH', `/orders/${id}/status`], ['POST', '/inventory'], ['POST', '/health'], ['POST', '/zones'], ['GET', '/lookups/pets']];
+  const systemRoutes = [['GET', '/security-summary'], ['GET', '/security_events'], ['GET', '/security_alerts'], ['GET', '/critical_approvals'], ['GET', '/users'], ['GET', '/audit_logs'], ['POST', '/critical_approvals'], ['POST', `/critical_approvals/${id}/decision`], ['POST', `/security_alerts/${id}/resolve`], ['POST', `/users/${id}/roles`], ['DELETE', `/users/${id}/roles/volunteer`]];
+
+  it.each([['administrator'], ['shelter_staff']])('%s reaches every shelter route and no system route', (role) => {
+    for (const [method, path] of shelterRoutes) expect(allowed([...community, role], method, path), `${method} ${path}`).toBe(true);
+    for (const [method, path] of systemRoutes) expect(allowed([...community, role], method, path), `${method} ${path}`).toBe(false);
+  });
+
+  it('the super administrator reaches every system route and no shelter route', () => {
+    const roles = [...community, 'super_administrator'];
+    for (const [method, path] of systemRoutes) expect(allowed(roles, method, path), `${method} ${path}`).toBe(true);
+    for (const [method, path] of shelterRoutes) expect(allowed(roles, method, path), `${method} ${path}`).toBe(false);
+  });
+
+  it('system routes are closed to field roles and customers too', () => {
+    for (const role of ['veterinarian', 'rescue_personnel', 'shelter_driver', 'volunteer', 'buyer']) {
+      for (const [method, path] of systemRoutes) expect(allowed([...community, role], method, path), `${role} ${method} ${path}`).toBe(false);
     }
   });
 

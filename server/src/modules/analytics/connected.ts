@@ -34,7 +34,7 @@ connectedAdminRouter.post('/contact_messages/:id/reply', async (req, res) => {
   const { reply } = z.object({ reply: z.string().min(5).max(5000) }).strict().parse(req.body);
   res.json({ data: assertDb(await db().rpc('reply_to_contact', { p_actor_id: req.actor!.id, p_message_id: uuid.parse(req.params.id), p_reply: reply })) });
 });
-connectedAdminRouter.post('/critical_approvals', authorize('administrator'), async (req, res) => {
+connectedAdminRouter.post('/critical_approvals', authorize('super_administrator'), async (req, res) => {
   const input = z.object({ user_id: uuid, role_name: z.enum(['administrator','super_administrator']), enabled: z.boolean(), reason: z.string().min(10).max(2000) }).strict().parse(req.body);
   res.status(201).json({ data: assertDb(await db().from('critical_approvals').insert({ ...input, requested_by: req.actor!.id }).select().single()) });
 });

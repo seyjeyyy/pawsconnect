@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { db } from '../../config/supabase.js';
-import { authenticate, authorize, isStaff } from '../../middleware/auth.js';
+import { authenticate, authorize, isStaff, isSystemAdministrator } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
 import { connectedAdminRouter } from './connected.js';
@@ -20,8 +20,27 @@ const fieldAccess: Record<string, { read: string[]; write: RegExp[] }> = {
   volunteer: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
   shelter_driver: { read: ['transport'], write: [new RegExp(`^PATCH /transport/${recordId}/status$`)] },
 };
+// System administration: accounts and access, the audit trail and the security centre.
+// Only the super administrator reaches these, and they are all the super administrator
+// reaches here. Shelter roles, including the administrator, are refused them.
+const systemAccess = {
+  read: ['security-summary', 'security_events', 'security_alerts', 'critical_approvals', 'users', 'audit_logs'],
+  write: [
+    /^POST \/critical_approvals$/,
+    new RegExp(`^POST /critical_approvals/${recordId}/decision$`),
+    new RegExp(`^POST /security_alerts/${recordId}/resolve$`),
+    new RegExp(`^POST /users/${recordId}/roles$`),
+    new RegExp(`^DELETE /users/${recordId}/roles/[a-z_]+$`),
+  ],
+};
 export const workspaceAccess: RequestHandler = (req, _res, next) => {
   const roles = req.actor?.roles ?? [];
+  const route = req.path.replace(/\/+$/, '');
+  const system = req.method === 'GET' ? systemAccess.read.includes(route.slice(1)) : systemAccess.write.some(pattern => pattern.test(`${req.method} ${route}`));
+  if (system) {
+    if (!isSystemAdministrator(roles)) throw new ApiError(403, 'FORBIDDEN', 'This action requires the super administrator.');
+    next(); return;
+  }
   if (isStaff(roles)) { next(); return; }
   const grants = roles.flatMap(role => fieldAccess[role] ? [fieldAccess[role]] : []);
   const path = req.path.replace(/\/+$/, '');
@@ -48,8 +67,8 @@ const resources: Record<string, { table: string; search?: string; order: string;
   zones: { table: 'service_zones', search: 'name', order: 'created_at' }, vehicles: { table: 'shelter_vehicles', search: 'name', order: 'name' },
   drivers: { table: 'shelter_drivers', order: 'created_at', key: 'user_id' }, donations: { table: 'donations', order: 'created_at' },
   volunteers: { table: 'volunteer_profiles', order: 'created_at', key: 'user_id', select: '*,profiles!volunteer_profiles_user_id_fkey(full_name)' },
-  users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles!user_roles_user_id_fkey(role_name)', admin: true },
-  expenses: { table: 'expenses', search: 'description', order: 'created_at' }, audit_logs: { table: 'audit_logs', search: 'action', order: 'created_at', admin: true },
+  users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles!user_roles_user_id_fkey(role_name)', super: true },
+  expenses: { table: 'expenses', search: 'description', order: 'created_at' }, audit_logs: { table: 'audit_logs', search: 'action', order: 'created_at', super: true },
   contact_messages: { table: 'contact_messages', search: 'name', order: 'created_at' },
   payments: { table: 'payment_transactions', order: 'created_at' }, reviews: { table: 'customer_reviews', order: 'created_at' },
   shipments: { table: 'shipments', order: 'created_at' }, notifications: { table: 'notifications', order: 'created_at', admin: true },
@@ -161,13 +180,13 @@ adminRouter.post('/volunteers/:id/tasks', async (req, res) => {
   assertDb(await db().from('volunteer_profiles').select('user_id').eq('user_id', id).eq('status', 'approved').single());
   res.status(201).json({ data: assertDb(await db().from('volunteer_tasks').insert({ ...input, volunteer_id: id, assigned_by: req.actor!.id }).select().single()) });
 });
-adminRouter.post('/users/:id/roles', authorize('administrator'), async (req, res) => {
+adminRouter.post('/users/:id/roles', authorize('super_administrator'), async (req, res) => {
   const { role_name } = z.object({ role_name: z.enum(['buyer', 'adopter', 'donor', 'community_reporter', 'volunteer', 'rescue_personnel', 'shelter_driver', 'shelter_staff', 'veterinarian', 'administrator']) }).strict().parse(req.body);
-  if (role_name === 'administrator') throw new ApiError(409, 'APPROVAL_REQUIRED', 'Submit an elevated access request for independent super administrator review.');
+  if (role_name === 'administrator') throw new ApiError(409, 'APPROVAL_REQUIRED', 'Administrator access is granted by request: file an elevated access request for a second super administrator to review.');
   assertDb(await db().rpc('assign_user_role', { p_actor_id: req.actor!.id, p_user_id: uuid.parse(req.params.id), p_role_name: role_name, p_enabled: true }));
   res.json({ data: { assigned: true } });
 });
-adminRouter.delete('/users/:id/roles/:role', authorize('administrator'), async (req, res) => {
+adminRouter.delete('/users/:id/roles/:role', authorize('super_administrator'), async (req, res) => {
   if (['administrator','super_administrator'].includes(String(req.params.role))) throw new ApiError(409, 'APPROVAL_REQUIRED', 'Submit an elevated access request for independent review.');
   assertDb(await db().rpc('assign_user_role', { p_actor_id: req.actor!.id, p_user_id: uuid.parse(req.params.id), p_role_name: z.string().max(50).parse(req.params.role), p_enabled: false }));
   res.json({ data: { removed: true } });
@@ -190,7 +209,7 @@ adminRouter.get('/:resource', async (req, res) => {
   const key = z.string().parse(req.params.resource), resource = resources[key];
   if (!resource) throw new ApiError(404, 'NOT_FOUND', 'Administration resource not found.');
   if (resource.super && !req.actor!.roles.includes('super_administrator')) throw new ApiError(403, 'FORBIDDEN', 'Super administrator access required.');
-  if (resource.admin && !req.actor!.roles.some(role => ['administrator','super_administrator'].includes(role))) throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
+  if (resource.admin && !req.actor!.roles.includes('administrator')) throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
   const { page, limit, q } = pagination.parse(req.query);
   const { status, sort, direction } = z.object({ status: z.string().max(50).optional(), sort: z.enum(['created_at', 'name', 'status']).optional(), direction: z.enum(['asc', 'desc']).default('desc') }).parse(req.query);
   let query = db().from(resource.table).select(resource.select ?? '*', { count: 'exact' });

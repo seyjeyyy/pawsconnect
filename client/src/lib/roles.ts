@@ -1,15 +1,19 @@
 // What each role sees. The API enforces the same rules (server/src/modules/analytics/admin.ts);
 // this file only decides which screens and menu items to show.
+//
+// Two separate lines of authority: the super administrator runs the system (accounts and
+// access, audit trail, security) and has no shelter screens; the administrator and shelter
+// staff run the shelter and have no system screens.
 
 const staff = ['super_administrator', 'administrator', 'shelter_staff'];
 const field = ['veterinarian', 'rescue_personnel', 'shelter_driver'];
 
-/** Administrators and shelter staff: the full shelter workspace. */
+/** Accounts that manage records in the workspace (as opposed to field roles, who only update work assigned to them). Which records is decided by workspaceSections. */
 export const isStaffRole = (roles: string[]) => roles.some(role => staff.includes(role));
 /** Anyone whose account exists to do shelter work. They land in the workspace, not the customer dashboard. */
 export const isOperational = (roles: string[]) => roles.some(role => staff.includes(role) || field.includes(role));
 
-const administratorOnly = ['users', 'audit_logs'];
+const systemSections = ['security', 'security_alerts', 'security_events', 'critical_approvals', 'users', 'audit_logs'];
 const staffSections = ['overview', 'payments', 'refunds', 'reviews', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
 const fieldSections: Record<string, string[]> = {
   veterinarian: ['pets', 'health'],
@@ -21,9 +25,12 @@ const fieldSections: Record<string, string[]> = {
 
 /** Workspace sections this account may open, in menu order. Empty means no workspace access. */
 export function workspaceSections(roles: string[]): string[] {
-  if (roles.includes('super_administrator')) return [...staffSections, ...administratorOnly, 'security', 'security_events', 'security_alerts', 'critical_approvals'];
-  if (roles.includes('administrator')) return [...staffSections, ...administratorOnly];
-  if (roles.includes('shelter_staff')) return staffSections;
+  // An account holding both kinds of role gets both sets; the demo accounts hold one each.
+  const sections = [
+    ...(roles.includes('super_administrator') ? systemSections : []),
+    ...(roles.includes('administrator') || roles.includes('shelter_staff') ? staffSections : []),
+  ];
+  if (sections.length) return sections;
   return [...new Set(roles.flatMap(role => fieldSections[role] ?? []))];
 }
 

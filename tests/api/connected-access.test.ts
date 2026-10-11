@@ -60,8 +60,19 @@ describe('connected API ownership',()=>{
   expect(state.rpc).not.toHaveBeenCalled();
  });
  it('requires critical approval for administrator grants through the API',async()=>{
-  await request(app).post(`/api/admin/users/${ids.alice}/roles`).set('Authorization',`Bearer ${ids.admin}`).send({role_name:'administrator'}).expect(409);
+  await request(app).post(`/api/admin/users/${ids.alice}/roles`).set('Authorization',`Bearer ${ids.super}`).send({role_name:'administrator'}).expect(409);
   expect(state.rpc).not.toHaveBeenCalled();
+ });
+ it('refuses role changes by a shelter administrator, and records the refusal',async()=>{
+  await request(app).post(`/api/admin/users/${ids.alice}/roles`).set('Authorization',`Bearer ${ids.admin}`).send({role_name:'volunteer'}).expect(403);
+  await request(app).get('/api/admin/users').set('Authorization',`Bearer ${ids.admin}`).expect(403);
+  await request(app).get('/api/admin/audit_logs').set('Authorization',`Bearer ${ids.admin}`).expect(403);
+  // No role was assigned; the only database calls are the security events for the three refusals.
+  expect(state.rpc.mock.calls.map((call:unknown[])=>call[0])).toEqual(['record_authorization_denial','record_authorization_denial','record_authorization_denial']);
+ });
+ it('refuses shelter operations to the super administrator',async()=>{
+  for(const path of ['/api/admin/analytics','/api/admin/orders','/api/admin/products','/api/admin/pets']) await request(app).get(path).set('Authorization',`Bearer ${ids.super}`).expect(403);
+  expect(state.queries.some((q:{table:string})=>['orders','products','pets'].includes(q.table))).toBe(false);
  });
  it('public catalogs never disclose acquisition costs or internal care notes',async()=>{
   state.tables.products=[{id:'p',name:'Published',cost_centavos:500,price_centavos:1000,is_published:true,is_sample:false},{id:'hidden',is_published:false,is_sample:false}];

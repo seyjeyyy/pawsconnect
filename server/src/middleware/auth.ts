@@ -27,8 +27,12 @@ export const optionalAuth: RequestHandler = async (req, res, next) => {
 };
 export const authorize = (...roles: string[]): RequestHandler => (req, _res, next) => {
   if (!req.actor) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue.');
-  if (!req.actor.roles.some(role => roles.includes(role) || (role === 'super_administrator' && roles.includes('administrator')))) throw new ApiError(403, 'FORBIDDEN', 'This action requires an authorized shelter role.');
+  if (!req.actor.roles.some(role => roles.includes(role))) throw new ApiError(403, 'FORBIDDEN', 'This action requires an authorized role.');
   next();
 };
-export const staffRoles = ['super_administrator', 'administrator', 'shelter_staff'];
+// Two separate lines of authority, neither of which implies the other:
+// - shelter operations (store, animals, rescue, transport, money): administrator and shelter staff;
+// - system administration (accounts and access, audit trail, security): super administrator.
+export const staffRoles = ['administrator', 'shelter_staff'];
 export const isStaff = (roles: string[]) => roles.some(r => staffRoles.includes(r));
+export const isSystemAdministrator = (roles: string[]) => roles.includes('super_administrator');
