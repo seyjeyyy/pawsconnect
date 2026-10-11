@@ -1,5 +1,7 @@
 # PawsConnect repair report — 2026-10-11
 
+Historical report for the initial 015–016 repair. A subsequent owner-requested change removes mandatory MFA in migration 017; its current rollout state and verification are in [STATUS.md](STATUS.md). MFA descriptions below record the earlier implementation, not the current requirement.
+
 The existing application was repaired and extended in place. **These changes are local and have not been deployed.** Production data, applied migrations 001–014, provider credentials and production jobs were not changed. There is no new sample telemetry, backup history or fabricated recovery result.
 
 The new functionality has real API/SQL implementations and isolated tests. It is not yet production-ready: migrations, real MFA acceptance testing, worker infrastructure and a hosted database-plus-Storage recovery drill remain necessary. [OPERATIONS.md](OPERATIONS.md) specifies those dependencies and release steps.

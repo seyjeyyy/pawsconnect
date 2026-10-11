@@ -2,7 +2,17 @@
 
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
-Hosted-release baseline: 138 unit, API and database tests and 12 browser tests passed. Live at https://pawsconnect-one.vercel.app; the live database remains at migration 014. The newer local repair, expanded checks and deployment blockers are documented in [REPAIR_REPORT.md](REPAIR_REPORT.md) and the local operations section below.
+## Two-step verification removal (migration 017)
+
+At the project owner's request, authenticator enrollment/challenge screens, workspace MFA gates and recent-MFA API checks have been removed. New migration `202610110017_remove_mfa_requirement.sql` allows normal password sessions through the existing role and active-session policies. It preserves account suspensions, session cutoffs, worker-secret restrictions and independent two-person approvals. Historical MFA references below describe the earlier 015–016 release.
+
+Apply `supabase/APPLY_017.sql` if 015–016 are already installed, or `supabase/APPLY_015_TO_017.sql` if neither is installed. Generate these files with `node scripts/prepare-operations-migrations.mjs`. The old 015–016 bundle alone is insufficient for this update. No production SQL is executed automatically.
+
+The latest read-only preflight confirms the hosted database is now at **016**, with the operations tables and session-check function available. For this project, apply **only `supabase/APPLY_017.sql`** next. Do not rerun 015–016. Authenticated production browser access has not been rechecked.
+
+Verified for this change: **180 unit/API/database tests**, **12 desktop/tablet/mobile operations browser checks**, typechecking and both production builds passed. The 016-to-017 upgrade test confirms that password-only system access works while suspended accounts and deleted sessions remain blocked. Existing third-party annotation and bundle-size build warnings remain.
+
+Earlier hosted-release baseline: 138 unit, API and database tests and 12 browser tests passed at migration 014. Live at https://pawsconnect-one.vercel.app. The current database state and pending 017 upgrade are recorded above. Historical repair evidence is in [REPAIR_REPORT.md](REPAIR_REPORT.md).
 
 ## Where the data comes from
 
@@ -10,7 +20,7 @@ Hosted-release baseline: 138 unit, API and database tests and 12 browser tests p
 
 The new account page was deployed before migrations 015–016 were applied (confirmed by the project owner). A read-only check returned `PGRST202` for `account_session_allowed` and `PGRST205` for `operations_config`, `account_access_controls` and `operations_signals`. Authentication therefore fails before account data loads. This is a missing database upgrade, not a password problem.
 
-Run the generated `supabase/APPLY_015_TO_016.sql` once in the Supabase SQL editor, then run `npm run check:deployment` from the configured workspace. The bundle includes a PostgREST schema-cache refresh. The preflight only reads schema/configuration and checks nonexistent session IDs; it does not alter records. The API now distinguishes this deployment mismatch from a transient database outage and continues to deny access when the session check is unavailable. GitHub pushes do not apply database migrations. Live recovery is pending that manual SQL step.
+The original remedy was applying 015–016. A later read-only preflight now confirms those tables and the session function are available. The API distinguishes a deployment mismatch from a transient database outage and continues to deny access when its session check is unavailable. GitHub pushes do not apply database migrations. Follow the current 017 instructions above for the requested two-step verification removal.
 
 Follow-up verification: 59 targeted unit/API tests passed, including a missing-session-function regression and existing authorization checks. Both client and server production builds passed. Existing bundle-size and third-party annotation warnings remain. No production SQL was executed.
 

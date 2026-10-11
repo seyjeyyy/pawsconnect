@@ -9,7 +9,7 @@ export function tourFor(roles:string[]) {
   workspace('users','People and permissions','Review real accounts and assigned roles. Elevated access requires a request and a different super administrator’s approval.',UserRound),
   workspace('operations','IT Operations','Inspect measured service health and integration configuration. Unavailable telemetry is labeled explicitly.',Activity),
   workspace('operations/backups','Backup coverage','Review provider inventory and verified worker reports. Database backups alone do not include uploaded Storage files.',Database),
-  workspace('operations/recovery','Restore and recovery','Request a staging drill before production recovery. A recent safety backup, fresh MFA and independent approval protect production.',ShieldCheck),
+  workspace('operations/recovery','Restore and recovery','Request a staging drill with a verified recovery point and independent approval. Production restore requires an external recovery coordinator.',ShieldCheck),
   workspace('operations/maintenance','Maintenance controls','Schedule read-only, partial, full or emergency maintenance. Every setting expires automatically within 24 hours.',Settings),
   workspace('operations/incidents','Incident response','Record investigations, assign responders, and keep a resolution timeline. Only actual records appear here.',Activity),
   workspace('audit_logs','A protected audit trail','Review account, configuration and recovery activity. Your account settings are available from the workspace sidebar.',ShieldCheck),

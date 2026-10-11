@@ -1,26 +1,26 @@
 # PawsConnect operations guide
 
-This guide describes the local operations implementation in migrations **015 and 016**. They have not been applied to the hosted database. No deployment, production write, credential rotation or hosted recovery was performed during this repair.
+This guide describes the operations implementation through migration **017**. Migration 017 removes mandatory two-step verification at the project owner's request. No deployment, production write, credential rotation or hosted recovery was performed during this change. The SQL must still be applied manually.
 
 ## Setup and release order
 
 **Account page showing a database error after deployment:** run `npm run check:deployment`. Codes `PGRST202` (required function missing) or `PGRST205` (required table missing) mean the API cannot see the expected schema. If migrations 015–016 have not been applied, generate the bundle below and paste it into the SQL editor once. If they have already been applied successfully, do not rerun their `CREATE` statements: run `NOTIFY pgrst, 'reload schema';` and recheck instead. See [PostgREST's schema cache documentation](https://docs.postgrest.org/en/stable/references/schema_cache.html). If the check still fails, verify that the API and SQL editor target the same project. Never bypass the session check to make sign-in appear to work.
 
 1. Use a separate staging Supabase project and Vercel environment. Local `server/.env` currently points at production; ordinary `npm run dev` is not an isolated test environment.
-2. Review migrations 015 and 016. Run `node scripts/prepare-operations-migrations.mjs` to generate the git-ignored `supabase/APPLY_015_TO_016.sql`. A person must paste it into the Supabase SQL editor. It wraps both files in one transaction. Apply to staging first; preserve a verified database **and Storage** backup before a production change.
-3. Configure Supabase TOTP enrollment. Verify a real account can enroll, challenge, sign out, sign in again and reach its allowed workspace. Keep separate system and shelter administrator accounts. Test a second super administrator for independent approvals. There is only one demo super administrator today.
+2. Review migrations 015–017. Run `node scripts/prepare-operations-migrations.mjs`. If 015–016 have not been applied, paste the generated `supabase/APPLY_015_TO_017.sql` into the Supabase SQL editor. If both are already applied, use **only** `supabase/APPLY_017.sql`. Each bundle is transactional; never rerun earlier applied migrations. Apply to staging first; preserve a verified database **and Storage** backup before a production change.
+3. Verify a real account can sign out, sign in with its password and reach its allowed workspace without an authenticator prompt. Keep separate system and shelter administrator accounts. Test a second super administrator for independent approvals. There is only one demo super administrator today.
 4. Configure optional integrations from the table below. Leave worker capabilities empty until a separate worker has passed the required staging checks. No worker executable or external runner is included in this repository.
 5. Run `npm run typecheck`, `npm test`, `npm run build`, then `npm run test:e2e` sequentially. Tests blank provider credentials. Browser tests start their own isolated servers; intercepted signed-in fixtures do not alter production auth.
 6. After staging acceptance and authorization, apply the migrations to production **before** deploying the corresponding API. Run `npm run check:deployment` with the target project's environment and require an exit code of zero. Build with `npx vercel build --prod`, then deploy with `npx vercel deploy --prebuilt --prod`. These commands were not run during this repair.
-7. Replace the existing expiry cron commands with the instrumented wrapper below. Verify actual history, maintenance restrictions, upload access and MFA against staging before normal production traffic.
+7. Replace the existing expiry cron commands with the instrumented wrapper below. Verify actual history, maintenance restrictions, upload access and session restrictions against staging before normal production traffic.
 
-Both migrations are additive: they preserve existing business rows and roles. They add restrictive access policies, so a coordinated rollout and MFA enrollment are necessary. Never edit migrations after they have been applied.
+These migrations preserve existing business rows and roles. Migration 017 changes the assurance requirement without removing restrictive session policies. Never edit migrations after they have been applied.
 
 ## Access and session controls
 
-`/admin/operations` is for `super_administrator` only. All workspace API routes require a Supabase-verified AAL2 session. System writes involving settings, roles, account restrictions, jobs, recovery and release requests also require a numeric MFA authentication-method timestamp within ten minutes. Renew it under **Account & MFA settings**.
+`/admin/operations` is for `super_administrator` only. Workspace API routes require a validated current session and the appropriate role. Password-only sessions (AAL1) are accepted; no authenticator or recent MFA challenge is required. Confirmation dialogs and independent approvals remain. Previously enrolled Supabase factors are not deleted by the migration; the application no longer requests or checks them.
 
-Every signed-in API request checks the validated JWT's `session_id` against `auth.sessions` and platform account restrictions. Direct database and Storage access has an additional restrictive RLS policy. Privileged direct database access also requires AAL2. New privileged SQL functions are explicitly revoked from `PUBLIC`, `anon` and `authenticated`; only the no-argument `current_session_allowed()` helper is deliberately exposed to authenticated clients.
+Every signed-in API request checks the validated JWT's `session_id` against `auth.sessions` and platform account restrictions. Direct database and Storage access has an additional restrictive RLS policy, including for privileged users. New privileged SQL functions are explicitly revoked from `PUBLIC`, `anon` and `authenticated`; only the no-argument `current_session_allowed()` helper is deliberately exposed to authenticated clients.
 
 In **People & access**, account protection actions suspend, reinstate or revoke sessions with a reason and audit record. They preserve user records. Session revocation advances a cutoff against the provider session's original creation time, so refreshing an old token cannot regain access. Reinstatement still requires a new sign-in. Elevated role holders first require the existing independent role-removal approval; self-restriction is refused.
 
@@ -51,7 +51,7 @@ Provider CPU/memory, storage bytes/growth, query samples, index advice, external
 
 ## Recorded jobs and retention
 
-The three allowed jobs are `expire_order_reservations`, `expire_pet_reservations`, and `retention`. The wrapper records actual success/failure, affected rows, timestamps and safe error codes. Transaction locks prevent overlapping execution of the same kind. Manual execution requires fresh MFA and confirmation. No arbitrary SQL can be submitted.
+The three allowed jobs are `expire_order_reservations`, `expire_pet_reservations`, and `retention`. The wrapper records actual success/failure, affected rows, timestamps and safe error codes. Transaction locks prevent overlapping execution of the same kind. Manual execution requires a current super-administrator session and confirmation. No arbitrary SQL can be submitted.
 
 After migrations, replace the existing named pg_cron schedules in the SQL editor (review them first):
 
@@ -111,6 +111,6 @@ The local automated drill exports a real isolated PostgreSQL/PGlite data directo
 
 ## Rollback and incident recovery
 
-Preserve the prior release artifact and database/Storage recovery point. Keep the additive schema and its data if application rollback is necessary; dropping the new tables would erase incident and access history. Prefer a corrective forward release. Code predating this change does not enforce the new service-role API session/MFA/maintenance checks, so it is not a safe unrestricted rollback once those controls are relied on. Use an independent maintenance/ingress fence and preserve the access enforcement layer while correcting the release.
+Preserve the prior release artifact and database/Storage recovery point. Keep the additive schema and its data if application rollback is necessary; dropping the new tables would erase incident and access history. Prefer a corrective forward release. Code predating the operations release does not enforce its service-role API session/maintenance checks, so it is not a safe unrestricted rollback once those controls are relied on. Use an independent maintenance/ingress fence and preserve the access enforcement layer while correcting the release. Rolling back to the 016-era application would reintroduce its UI/API authenticator requirement.
 
 Do not reverse restrictive policies or delete records as a troubleshooting shortcut. If database connectivity fails, the application cannot rely on its own operations dashboard for recovery: use the authorized provider console and an external incident record. Never paste privileged credentials into the dashboard, repository, logs or incident notes.

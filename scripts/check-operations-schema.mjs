@@ -15,8 +15,8 @@ const {data,error}=await db.rpc('account_session_allowed',{p_user_id:'00000000-0
 console.info(JSON.stringify({check:'account_session_allowed',ok:!error&&data===false,code:error?.code,message:error?.message,hint:error?.hint}));
 const config=await db.from('operations_config').select('schema_version').eq('id',true).single();
 console.info(JSON.stringify({check:'schema_version',version:config.data?.schema_version,code:config.error?.code}));
-failed ||= !!config.error||config.data?.schema_version!=='016';
+failed ||= !!config.error||config.data?.schema_version!=='017';
 failed ||= !!error||data!==false;
-if(failed)console.error('Deployment blocked: apply migrations 015–016 in the Supabase SQL editor, refresh the PostgREST schema cache, then rerun this check. No data was changed.');
+if(failed)console.error('Deployment blocked: apply pending migrations through 017 in the Supabase SQL editor, refresh the PostgREST schema cache, then rerun this check. No data was changed.');
 else console.info('Operations schema preflight passed. This does not replace authenticated staging acceptance tests.');
 process.exitCode=failed?1:0;

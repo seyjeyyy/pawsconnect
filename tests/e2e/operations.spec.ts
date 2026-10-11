@@ -3,7 +3,7 @@ import {expect,test,type Page} from '@playwright/test';
 // preview server. Production authentication contains no test bypass.
 async function fixture(page:Page,role='super_administrator'){
  const user={id:'00000000-0000-4000-8000-000000000010',email:'fixture@example.test'};
- await page.route('**/src/lib/supabase.ts',route=>route.fulfill({contentType:'application/javascript',body:`const user=${JSON.stringify(user)};const channel={on(){return channel},subscribe(){return channel}};export const supabase={auth:{getSession:async()=>({data:{session:{user,access_token:'browser-fixture'}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}}),mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:'aal2'}}),listFactors:async()=>({data:{totp:[]}})}},channel:()=>channel,removeChannel:async()=>{}};` }));
+ await page.route('**/src/lib/supabase.ts',route=>route.fulfill({contentType:'application/javascript',body:`const user=${JSON.stringify(user)};const channel={on(){return channel},subscribe(){return channel}};export const supabase={auth:{getSession:async()=>({data:{session:{user,access_token:'browser-fixture'}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},channel:()=>channel,removeChannel:async()=>{}};` }));
  const config={version:1,mode:'normal',modules:[],starts_at:null,ends_at:null,public_notice:'',instructions:'',reason:'',disabled_features:[],slow_request_ms:2000,backup_interval_hours:null,retention_days:30,rpo_minutes:1440,rto_minutes:240};
  const writes:unknown[]=[];
  await page.route('**/api/**',async route=>{
@@ -45,4 +45,17 @@ test('maintenance confirmation cancels safely and submits once after confirmatio
 });
 test('shelter staff cannot navigate to IT Operations',async({page})=>{
  await fixture(page,'shelter_staff');await page.goto('/admin/operations');await expect(page).toHaveURL(/\/admin\/overview$/);await expect(page.getByRole('link',{name:'IT Operations',exact:true})).toHaveCount(0);
+});
+
+test('account settings and the system workspace need no authenticator challenge',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ await fixture(page); // The auth fixture deliberately has no MFA methods.
+ await page.goto('/account/settings');
+ await expect(page.locator('.dashboard-main h1')).toHaveText('Account settings');
+ await expect(page.getByText('Two-step verification',{exact:true})).toHaveCount(0);
+ await expect(page.getByLabel('Authenticator code')).toHaveCount(0);
+ await page.goto('/admin/security');
+ await expect(page.locator('.dashboard-main h1')).toBeVisible();
+ await expect(page.getByText('Protect your workspace',{exact:true})).toHaveCount(0);
+ expect(errors).toEqual([]);
 });

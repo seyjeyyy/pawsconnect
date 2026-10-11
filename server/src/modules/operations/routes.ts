@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { env, integrations, configured } from '../../config/env.js';
 import { db } from '../../config/supabase.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { requireMfa, requireRecentMfa } from '../../middleware/mfa.js';
+
 import { formLimiter, workerLimiter } from '../../middleware/rateLimit.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { uuid, pagination } from '../../utils/validation.js';
@@ -54,7 +54,7 @@ operationsPublicRouter.put('/operations/tour/:key',authenticate,async(req,res)=>
 });
 
 export const operationsRouter=Router();
-operationsRouter.use(authenticate,authorize('super_administrator'),requireMfa);
+operationsRouter.use(authenticate,authorize('super_administrator'));
 operationsRouter.get('/overview',async(req,res)=>{
  const start=performance.now();
  const diagnostics=assertDb(await db().rpc('operations_diagnostics',{p_actor_id:req.actor!.id}));
@@ -68,7 +68,7 @@ operationsRouter.get('/overview',async(req,res)=>{
  }});
 });
 operationsRouter.get('/config',async(_req,res)=>res.json({data:await readOperationsConfig()}));
-operationsRouter.put('/config',requireRecentMfa,async(req,res)=>{
+operationsRouter.put('/config',async(req,res)=>{
  const {version,...input}=configInput.parse(req.body);
  if(input.backup_interval_hours && !configuredWorkerKinds().includes('backup'))throw new ApiError(503,'WORKER_UNCONFIGURED','Configure and validate the backup worker before enabling a schedule.');
  res.json({data:assertDb(await db().rpc('change_operations_config',{p_actor_id:req.actor!.id,p_version:version,p_config:input}))});
@@ -76,7 +76,7 @@ operationsRouter.put('/config',requireRecentMfa,async(req,res)=>{
 operationsRouter.get('/responders',async(_req,res)=>{
  res.json({data:assertDb(await db().from('user_roles').select('user_id,profiles!user_roles_user_id_fkey(full_name)').eq('role_name','super_administrator').limit(100))});
 });
-operationsRouter.post('/accounts/:id/access',requireRecentMfa,async(req,res)=>{
+operationsRouter.post('/accounts/:id/access',async(req,res)=>{
  const input=z.object({action:z.enum(['suspend','reinstate','revoke_sessions']),reason:z.string().trim().min(10).max(2000)}).strict().parse(req.body);
  res.json({data:assertDb(await db().rpc('change_account_access',{p_actor_id:req.actor!.id,p_user_id:uuid.parse(req.params.id),p_action:input.action,p_reason:input.reason}))});
 });
@@ -104,11 +104,11 @@ operationsRouter.patch('/incidents/:id',async(req,res)=>{
  const input=z.object({status:z.enum(['open','investigating','resolved']),assigned_to:uuid.nullable(),notes:z.string().trim().min(10).max(5000),resolution:z.string().max(5000).nullable(),postmortem:z.string().max(10000).nullable()}).strict().refine(v=>v.status!=='resolved'||(v.resolution?.trim().length || 0)>=10,'Resolution notes are required.').parse(req.body);
  res.json({data:assertDb(await db().rpc('save_operations_incident',{p_actor_id:req.actor!.id,p_id:uuid.parse(req.params.id),p_input:input}))});
 });
-operationsRouter.post('/jobs/run',requireRecentMfa,async(req,res)=>{
+operationsRouter.post('/jobs/run',async(req,res)=>{
  const {kind}=z.object({kind:z.enum(['expire_order_reservations','expire_pet_reservations','retention'])}).strict().parse(req.body);
  res.json({data:assertDb(await db().rpc('run_operations_job',{p_kind:kind,p_actor_id:req.actor!.id}))});
 });
-operationsRouter.post('/requests',requireRecentMfa,async(req,res)=>{
+operationsRouter.post('/requests',async(req,res)=>{
  const input=z.object({idempotency_key:uuid,kind,target:z.enum(['staging','production']),reason:z.string().trim().min(10).max(2000),confirmation:z.string(),recovery_point_id:uuid.nullable(),pre_restore_backup_id:uuid.nullable(),release_ref:z.string().regex(/^[a-f0-9]{40}$/).nullable()}).strict().parse(req.body);
  if(!configuredWorkerKinds().includes(input.kind))throw new ApiError(503,'WORKER_UNCONFIGURED','A secure worker for this operation has not been configured. No job was started.');
  if(input.confirmation!==`PawsConnect ${input.target}`)throw new ApiError(400,'CONFIRMATION_REQUIRED','Type the exact target name to confirm.');
@@ -116,7 +116,7 @@ operationsRouter.post('/requests',requireRecentMfa,async(req,res)=>{
  const result=assertDb(await db().rpc('record_operations_request',{p_actor_id:req.actor!.id,p_key:input.idempotency_key,p_kind:input.kind,p_target:input.target,p_reason:input.reason,p_recovery_point:input.recovery_point_id,p_pre_backup:input.pre_restore_backup_id,p_release_ref:input.release_ref}));
  res.status(201).json({data:withoutLease(result)});
 });
-operationsRouter.post('/requests/:id/decision',requireRecentMfa,async(req,res)=>{
+operationsRouter.post('/requests/:id/decision',async(req,res)=>{
  const input=z.object({approve:z.boolean(),notes:z.string().trim().min(10).max(2000)}).strict().parse(req.body);
  res.json({data:withoutLease(assertDb(await db().rpc('decide_operations_request',{p_actor_id:req.actor!.id,p_id:uuid.parse(req.params.id),p_approve:input.approve,p_notes:input.notes})))});
 });

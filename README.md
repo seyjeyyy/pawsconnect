@@ -50,7 +50,7 @@ With no configuration the app still starts, but it has nothing to show: every li
 
    Granting or removing administrator or super administrator access afterwards takes two super administrators: one files the request and another approves it.
 
-7. Workspace users must enroll and verify a TOTP authenticator under **Account settings**. Critical system changes require a code verified within ten minutes. The super administrator's **IT Operations** area adds recorded monitoring, incidents, jobs, maintenance and configuration. External backup/release workers are unconfigured by default; production restore dispatch is disabled pending an independent recovery coordinator. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for exact setup, worker contracts and limitations.
+7. Workspace access uses normal sign-in, current-session checks and role permissions. Migration 017 removes the application's two-step verification requirement; independent approval remains required for elevated roles and protected operations. The super administrator's **IT Operations** area adds recorded monitoring, incidents, jobs, maintenance and configuration. External backup/release workers are unconfigured by default; production restore dispatch is disabled pending an independent recovery coordinator. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for exact setup, worker contracts and limitations.
 
 ## Optional integrations
 
@@ -80,7 +80,7 @@ Service zones are not pre-loaded. An administrator must add verified WGS84 bound
 | `npm run dev` | API and web app with reload |
 | `npm run build` | Production build of both workspaces |
 | `npm run typecheck` | TypeScript check of both workspaces |
-| `npm run check:deployment` | Read-only check of the configured database's operations tables, schema version and session function; fails if migrations 015–016 are missing. Does not apply migrations. |
+| `npm run check:deployment` | Read-only check of the configured database's operations tables, schema version and session function; requires migrations through 017. Does not apply migrations. |
 | `npm test` | Unit, API and database tests (no external services needed) |
 | `npm run test:e2e` | Browser tests on desktop, tablet and mobile against isolated servers. First run: `npx playwright install chromium` |
 | `npm start` | Run the built API |

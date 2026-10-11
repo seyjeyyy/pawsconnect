@@ -83,9 +83,8 @@ export async function createUser(db: PGlite, email: string, metadata: Record<str
 export function asUser<T>(db: PGlite, userId: string | null, fn: (tx: Transaction) => Promise<T>) {
   return db.transaction(async tx => {
     await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId ?? '']);
-    // Existing role-policy tests represent fully verified sessions. Dedicated MFA
-    // tests override this claim to aal1 and verify that privileged reads are denied.
-    await tx.query(`select set_config('request.jwt.claim.aal', 'aal2', true)`);
+    // Ordinary password sessions must satisfy current-session and role policies.
+    await tx.query(`select set_config('request.jwt.claim.aal', 'aal1', true)`);
     await tx.exec(`set local role ${userId ? 'authenticated' : 'anon'}`);
     return fn(tx);
   }) as Promise<T>;

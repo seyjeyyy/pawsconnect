@@ -64,7 +64,7 @@ describe('operations integrity and authorization',()=>{
   const job=(await row("select to_jsonb(public.run_operations_job('expire_order_reservations',$1)) r",[one])).r;
   expect(job.status).toBe('succeeded');expect(job.affected_rows).toBe(0);expect(job.finished_at).toBeTruthy();
   const metrics=(await row('select public.operations_diagnostics($1) r',[one])).r;
-  expect(metrics.schema_version).toBe('016');expect(metrics.database_bytes).toBeGreaterThan(0);
+  expect(metrics.schema_version).toBe('017');expect(metrics.database_bytes).toBeGreaterThan(0);
  });
  it('rechecks approval access before dispatch and blocks unresolved target outcomes',async()=>{
   const backup=(await row("select id from operations_requests where kind='backup' and status='succeeded' limit 1")).id;
@@ -102,11 +102,14 @@ describe('operations integrity and authorization',()=>{
   expect((await row('select public.account_session_allowed($1,$2) allowed',[one,two])).allowed).toBe(false);
   await expect(asUser(db,one,tx=>tx.query('select public.account_session_allowed($1,$1)',[two]))).rejects.toThrow(/permission denied/);
  });
- it('does not let a privileged account bypass MFA through direct database reads',async()=>{
+ it('allows password-only system reads while preserving role and worker-secret restrictions',async()=>{
   const result=await asUser(db,one,async tx=>{
    await tx.query("select set_config('request.jwt.claim.aal','aal1',true)");
    return tx.query('select * from audit_logs');
   });
-  expect(result.rows).toEqual([]);
+  expect(result.rows.length).toBeGreaterThan(0);
+  expect((await asUser(db,one,tx=>tx.query('select * from operations_config'))).rows).toHaveLength(1);
+  expect((await asUser(db,staff,tx=>tx.query('select * from operations_config'))).rows).toEqual([]);
+  await expect(asUser(db,one,tx=>tx.query('select * from operations_requests'))).rejects.toThrow(/permission denied/);
  });
 });
