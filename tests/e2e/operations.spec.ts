@@ -1,16 +1,33 @@
 import {expect,test,type Page} from '@playwright/test';
 // Browser-only fixtures. Every backend call stays intercepted on the isolated
 // preview server. Production authentication contains no test bypass.
-async function fixture(page:Page,role='super_administrator'){
+async function fixture(page:Page,role='super_administrator',signedIn=true){
  const user={id:'00000000-0000-4000-8000-000000000010',email:'fixture@example.test'};
- await page.route('**/src/lib/supabase.ts',route=>route.fulfill({contentType:'application/javascript',body:`const user=${JSON.stringify(user)};const channel={on(){return channel},subscribe(){return channel}};export const supabase={auth:{getSession:async()=>({data:{session:{user,access_token:'browser-fixture'}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},channel:()=>channel,removeChannel:async()=>{}};` }));
+ await page.route('**/src/lib/supabase.ts',route=>route.fulfill({contentType:'application/javascript',body:`
+ const initialUser=${JSON.stringify(user)};
+ let session=JSON.parse(sessionStorage.getItem('fixture-session')||'null')||(${signedIn}?{user:initialUser,access_token:'browser-fixture'}:null);
+ const listeners=new Set();
+ const channel={on(){return channel},subscribe(){return channel}};
+ export const supabase={auth:{
+  getSession:async()=>({data:{session}}),
+  onAuthStateChange:callback=>{listeners.add(callback);return {data:{subscription:{unsubscribe(){listeners.delete(callback)}}}}},
+  signInWithPassword:async({email})=>{
+   const role=email.split('@')[0];
+   session={user:{id:email,email},access_token:'browser-fixture:'+role};
+   sessionStorage.setItem('fixture-session',JSON.stringify(session));
+   listeners.forEach(callback=>callback('SIGNED_IN',session));return {data:{session},error:null};
+  },
+  signOut:async()=>{session=null;sessionStorage.removeItem('fixture-session');listeners.forEach(callback=>callback('SIGNED_OUT',null));return {error:null}}
+ },channel:()=>channel,removeChannel:async()=>{}};` }));
  const config={version:1,mode:'normal',modules:[],starts_at:null,ends_at:null,public_notice:'',instructions:'',reason:'',disabled_features:[],slow_request_ms:2000,backup_interval_hours:null,retention_days:30,rpo_minutes:1440,rto_minutes:240};
  const writes:unknown[]=[];
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   let data:unknown=[],meta:unknown=undefined;
-  if(path==='/api/auth/me')data={...user,full_name:'Fixture operator',roles:[...new Set([role,'buyer','adopter','donor','community_reporter'])]};
+  const activeRole=request.headers().authorization?.split(':')[1]||role;
+  if(path==='/api/auth/me')data={...user,full_name:'Fixture operator',roles:[...new Set([activeRole,'buyer','adopter','donor','community_reporter'])]};
   else if(path==='/api/cart')data={items:[]};
+  else if(path==='/api/volunteers/mine')data=null;
   else if(path==='/api/health')data={status:'ok',payment_mode:'unavailable'};
   else if(path==='/api/operations/status')data={active:false};
   else if(path.includes('/operations/tour/'))data=null;
@@ -101,4 +118,55 @@ test('account settings and the system workspace need no authenticator challenge'
  await expect(page.locator('.dashboard-main h1')).toBeVisible();
  await expect(page.getByText('Protect your workspace',{exact:true})).toHaveCount(0);
  expect(errors).toEqual([]);
+});
+
+const destinations:Record<string,string>={super_administrator:'/admin/security',administrator:'/admin/overview',shelter_staff:'/admin/overview',veterinarian:'/admin/pets',rescue_personnel:'/admin/rescue',shelter_driver:'/admin/transport',volunteer:'/account/volunteer',buyer:'/account/overview',adopter:'/account/overview',donor:'/account/overview',community_reporter:'/account/overview'};
+for(const [role,destination] of Object.entries(destinations)) {
+ test(`${role} signs in to a dedicated task page`,async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await fixture(page,role,false);
+  await page.goto('/auth/login?next=/');
+  await page.getByLabel('Email address').fill(`${role}@example.test`);
+  await page.getByLabel('Password',{exact:true}).fill('isolated-fixture-password');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page).toHaveURL(destination);
+  await expect(page.locator('.dashboard-main h1')).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'Workspace shortcuts'})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'Main navigation',exact:true})).toHaveCount(0);
+  await expect(page.locator('.footer,.announcement')).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(0);
+  await page.goto('/');await expect(page).toHaveURL(destination);
+  await page.reload();await expect(page).toHaveURL(destination);
+  await page.goto('/auth/login');await expect(page).toHaveURL(destination);
+  await page.goto('/auth/callback');await expect(page).toHaveURL(destination);
+  expect(errors).toEqual([]);
+ });
+}
+
+test('switching accounts replaces the previous workspace and signing out stays signed out',async({page})=>{
+ await fixture(page,'super_administrator',false);
+ await page.goto('/auth/login');
+ for(const role of ['super_administrator','shelter_driver','buyer']) {
+  await page.getByLabel('Email address').fill(`${role}@example.test`);
+  await page.getByLabel('Password',{exact:true}).fill('isolated-fixture-password');
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await expect(page).toHaveURL(destinations[role]);
+  if(role!=='super_administrator')await expect(page.locator('.account-sidebar a[href="/admin/security"]')).toHaveCount(0);
+  await page.getByRole('navigation',{name:'Workspace shortcuts'}).getByRole('button',{name:'Sign out',exact:true}).click();
+  await expect(page).toHaveURL('/auth/login');
+  await page.reload();await expect(page.getByLabel('Email address')).toBeVisible();
+ }
+ await page.goto('/');await expect(page.getByRole('heading',{level:1})).toContainText('Connecting loving homes');
+});
+
+test('role lookup must succeed before sign-in chooses a workspace',async({page})=>{
+ await fixture(page,'super_administrator');
+ await page.route('**/api/auth/me',route=>route.fulfill({status:503,json:{error:{code:'UNAVAILABLE',message:'Identity service temporarily unavailable'}}}));
+ await page.goto('/auth/login');
+ await expect(page.getByRole('alert')).toContainText('Identity service temporarily unavailable');
+ await expect(page).toHaveURL('/auth/login');
+ await expect(page.locator('.dashboard-main')).toHaveCount(0);
+ await page.unroute('**/api/auth/me');
+ await page.getByRole('button',{name:'Retry',exact:true}).click();
+ await expect(page).toHaveURL('/admin/security');
 });

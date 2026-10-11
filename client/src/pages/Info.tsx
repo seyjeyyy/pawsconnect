@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ArrowRight, PawPrint, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { SessionDestination } from '../components/SessionDestination';
 
 export function NotFoundPage() {
   return <div className="page container"><div className="card empty-state"><PawPrint size={40} /><h1>This page wandered off.</h1><p>The link may be out of date, or the page may have moved.</p><div className="hero-buttons"><Link className="btn btn-primary" to="/">Back to home<ArrowRight size={16} /></Link><Link className="btn btn-secondary" to="/shop">Browse the shop</Link></div></div></div>;
@@ -11,7 +12,7 @@ export function NotFoundPage() {
 export function AuthCallbackPage() {
   const { user, loading, configured } = useAuth();
   if (loading) return <main className="page container" role="status"><div className="card empty-state"><ShieldCheck size={36} /><h1>Confirming your account…</h1><p>One moment while we verify your link.</p></div></main>;
-  if (user) return <Navigate to="/account" replace />;
+  if (user) return <SessionDestination/>;
   return <main className="page container"><div className="card empty-state"><ShieldCheck size={36} /><h1>We couldn’t confirm this link.</h1><p>{configured ? 'It may have expired or already been used. Sign in, or request a new link.' : 'Account services are not connected yet.'}</p><Link className="btn btn-primary" to="/auth/login">Go to sign in<ArrowRight size={16} /></Link></div></main>;
 }
 

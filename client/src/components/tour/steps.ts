@@ -34,7 +34,7 @@ export function tourFor(roles:string[]) {
   {route:'/transport',targets:['.tabs','.page-intro'],icon:Truck,title:'Plan a safe journey',body:'Request authorized transport in supported areas. Outside coverage, submit an alternative arrangement for manual review.'},
   {route:'/shop',targets:['.catalog-toolbar','.page-intro'],icon:ShoppingBag,title:'Shop and track orders',body:'Browse essentials and check stock. The server verifies prices and reserves inventory; Stripe confirms completed payments.'},
   {route:'/donate',targets:['.donation-amounts','.page-intro'],icon:HeartHandshake,title:'Support everyday care',body:'Offer supplies or make a one-time donation. Your account records confirmed support separately from shop purchases.'},
-  {route:'/account',targets:['.account-sidebar','.account-gate'],icon:UserRound,title:'Your records and updates',body:'Sign in to track orders, applications, reports and notifications. Profile and account settings are available here.'},
+  {route:'/account/overview',targets:['.account-sidebar','.account-gate'],icon:UserRound,title:'Your records and updates',body:'Sign in to track orders, applications, reports and notifications. Profile and account settings are available here.'},
   ...(roles.includes('volunteer')?[{route:'/account/volunteer',targets:['.dashboard-main'],icon:HeartHandshake,title:'Your volunteer tasks',body:'Review your assigned tasks and update progress. Rescue assignments, when authorized, have a separate workspace.'}]:[]),
  ] as Step[]};
 }

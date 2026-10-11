@@ -1,0 +1,15 @@
+.workspace-shell { min-height: 100dvh; background: var(--cream, #fff8f0); }
+.workspace-header { background: var(--white); border-bottom: 1px solid var(--line); }
+.workspace-header-inner { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; padding-block: 1rem; }
+.workspace-brand { display: flex; align-items: center; gap: .65rem; color: var(--navy); font-weight: 800; font-size: 1.2rem; }
+.workspace-brand > svg { color: var(--orange); }
+.workspace-brand small { display: block; font-size: .75rem; font-weight: 500; color: var(--muted); }
+.workspace-shortcuts { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 1rem; font-size: .85rem; }
+.workspace-user { display: flex; align-items: center; gap: .4rem; }
+.workspace-user span { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-shell .tour-invite { position: static; margin: 0 auto 1.5rem; }
+@media (max-width: 700px) {
+  .workspace-header-inner { align-items: flex-start; flex-direction: column; gap: .8rem; }
+  .workspace-shortcuts { justify-content: flex-start; gap: .75rem; }
+  .workspace-user span { max-width: 8rem; }
+}

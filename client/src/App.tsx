@@ -1,7 +1,10 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
-import { TourProvider } from './components/tour/Tour';
+import WorkspaceLayout from './components/layout/WorkspaceLayout';
+import { SessionDestination } from './components/SessionDestination';
+import { useAuth } from './contexts/AuthContext';
+import { TourProvider, useTour } from './components/tour/Tour';
 import Home from './pages/Home';
 import { AuthCallbackPage, NotFoundPage, PrivacyPage, TermsPage } from './pages/Info';
 
@@ -39,8 +42,9 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/auth" element={<Navigate to="/auth/login" replace />} />
         <Route path="/auth/:mode" element={<AuthPage />} />
+        <Route element={<LandingPage/>}><Route index element={<Home/>}/></Route>
         <Route element={<Layout />}>
-          <Route index element={<Home />} />
+          <Route path="welcome" element={<Home />} />
           <Route path="adopt" element={<AdoptPage />} />
           <Route path="adopt/:id" element={<PetPage />} />
           <Route path="match" element={<MatchPage />} />
@@ -57,6 +61,9 @@ export default function App() {
           <Route path="contact" element={<ContactPage />} />
           <Route path="privacy" element={<PrivacyPage />} />
           <Route path="terms" element={<TermsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+        <Route element={<WorkspaceLayout/>}>
           <Route path="account" element={<DashboardPage />} />
           <Route path="account/:tab" element={<DashboardPage />} />
           <Route path="admin" element={<AdminPage />} />
@@ -66,10 +73,16 @@ export default function App() {
           {/* Paths used in notification links written by the database. */}
           <Route path="orders/:id" element={<Navigate to="/account/orders" replace />} />
           <Route path="dashboard" element={<Navigate to="/account" replace />} />
-          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </Suspense>
     </TourProvider>
   );
+}
+
+function LandingPage() {
+  const {user, loading, rolesError} = useAuth();
+  const {active} = useTour();
+  if (loading) return <Loading/>;
+  return !active && (user || rolesError) ? <SessionDestination/> : <Layout/>;
 }

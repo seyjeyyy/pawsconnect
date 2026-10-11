@@ -56,4 +56,18 @@ const titles: [string, string][] = [
 export const roleTitle = (roles: string[]) => titles.find(([role]) => roles.includes(role))?.[1] ?? 'Member';
 
 /** Where "my account" leads for this account. */
-export const homePath = (roles: string[]) => isOperational(roles) ? '/admin' : '/account';
+export const homePath = (roles: string[]) => isOperational(roles) ? `/admin/${workspaceSections(roles)[0]}` : roles.includes('volunteer') ? '/account/volunteer' : '/account/overview';
+
+/** Resume an intended task only when it belongs to this account's area. */
+export function signInPath(roles: string[], next: string | null) {
+  const fallback = homePath(roles);
+  if (!next?.startsWith('/') || next.startsWith('//') || next.includes('\\')) return fallback;
+  const path = new URL(next, 'https://pawsconnect.invalid').pathname;
+  if (path === '/' || path === '/welcome' || path.startsWith('/auth')) return fallback;
+  if (path.startsWith('/admin')) {
+    const section = path.split('/')[2];
+    return workspaceSections(roles).includes(section) || (section === 'operations' && roles.includes('super_administrator')) ? next : fallback;
+  }
+  if (isOperational(roles) && !['/account/profile','/account/settings','/account/notifications'].includes(path)) return fallback;
+  return next;
+}

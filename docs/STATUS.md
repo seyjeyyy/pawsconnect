@@ -2,6 +2,14 @@
 
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
+## Dedicated sign-in destinations and workspace layout
+
+Sign-in waits for the account's roles before routing. Super administrators open system security; administrators and shelter staff open operations overview; veterinarians open animals in care; rescuers open rescue assignments; drivers open transport jobs; volunteers open volunteer tasks; community members open their personal account overview. Existing sessions visiting the root or login page also return to their task page. Authorized task links (including community checkout) still resume after sign-in. Role lookup failures show a retry instead of choosing the wrong dashboard.
+
+Account, shelter and IT pages use a dedicated workspace header with profile, notifications and sign-out, without the public marketing navigation or footer. The public website remains available through an explicit View website link. Tour invitations appear below workspace content so they cannot cover task links. Database permissions and API authorization are unchanged; no new migration is needed.
+
+Verified: 25 focused unit/API checks, typechecking and both production builds. The isolated browser suite passed 107 of 108 checks initially; the remaining maintenance check passed on rerun after its trace showed a local Vite module connection refusal. Coverage includes sign-in for all 11 account types on desktop/tablet/mobile, session reloads, email callbacks, identity failure/retry, account switching, sign-out, menus and tours. Existing build warnings remain. Production sign-in was not exercised.
+
 ## Profile and settings navigation
 
 Operational accounts now retain their role's workspace links when opening Profile & settings. Their personal menu contains profile, settings and notifications; customer shopping and adoption tabs no longer appear. Workspace links share the same role filtering, labels and ordering as the main workspace. Community accounts and volunteers retain their existing account menus.
