@@ -10,6 +10,7 @@
     "node": ">=22.12"
   },
   "scripts": {
+    "check:deployment": "node scripts/check-operations-schema.mjs",
     "dev": "concurrently -k -n API,WEB -c blue,yellow \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces --if-present",

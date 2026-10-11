@@ -13,6 +13,10 @@ export class ApiError extends Error {
 export function assertDb<T = any>(result: { data: unknown; error: { message: string; code?: string } | null }): T {
   if (result.error) {
     const { code, message } = result.error;
+    if (['PGRST202', 'PGRST204', 'PGRST205', '42P01', '42703', '42883'].includes(code || '')) {
+      console.error('Database schema does not match this release:', code);
+      throw new ApiError(503, 'DEPLOYMENT_SCHEMA_MISMATCH', 'This update is waiting for a database upgrade. Please contact the site administrator; retrying or signing in again will not fix it.');
+    }
     if (code === 'PGRST116') throw new ApiError(404, 'NOT_FOUND', 'This record was not found.');
     if (code === '23505') throw new ApiError(409, 'DUPLICATE', 'This record already exists.');
     if (code === '42501') throw new ApiError(403, 'FORBIDDEN', 'You do not have permission for this action.');

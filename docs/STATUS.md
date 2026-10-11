@@ -6,6 +6,14 @@ Hosted-release baseline: 138 unit, API and database tests and 12 browser tests p
 
 ## Where the data comes from
 
+### Account-page deployment incident (2026-10-11)
+
+The new account page was deployed before migrations 015–016 were applied (confirmed by the project owner). A read-only check returned `PGRST202` for `account_session_allowed` and `PGRST205` for `operations_config`, `account_access_controls` and `operations_signals`. Authentication therefore fails before account data loads. This is a missing database upgrade, not a password problem.
+
+Run the generated `supabase/APPLY_015_TO_016.sql` once in the Supabase SQL editor, then run `npm run check:deployment` from the configured workspace. The bundle includes a PostgREST schema-cache refresh. The preflight only reads schema/configuration and checks nonexistent session IDs; it does not alter records. The API now distinguishes this deployment mismatch from a transient database outage and continues to deny access when the session check is unavailable. GitHub pushes do not apply database migrations. Live recovery is pending that manual SQL step.
+
+Follow-up verification: 59 targeted unit/API tests passed, including a missing-session-function regression and existing authorization checks. Both client and server production builds passed. Existing bundle-size and third-party annotation warnings remain. No production SQL was executed.
+
 Every listing, record, count and figure in the application is read from the Supabase database. There is no built-in sample data in production code: with the database unreachable, pages say the service is unavailable instead of showing examples. Sample fixtures exist only under `tests/fixtures/`.
 
 The database itself currently holds **demonstration records**, not real shelter records. See "Demo data" below.

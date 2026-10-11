@@ -43,6 +43,14 @@ beforeEach(()=>{
  state.tables={user_roles:[{user_id:ids.alice,roles:{name:'buyer'}},{user_id:ids.bob,roles:{name:'buyer'}},{user_id:ids.admin,roles:{name:'administrator'}},{user_id:ids.super,roles:{name:'super_administrator'}}]};
 });
 describe('connected API ownership',()=>{
+ it('reports a deployment mismatch and refuses access when the session-check migration is missing',async()=>{
+  state.rpc.mockImplementation(async()=>({data:null,error:{code:'PGRST202',message:'Missing public.account_session_allowed in schema cache'}}));
+  const result=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${tokenFor(ids.alice)}`).expect(503);
+  expect(result.body.error.code).toBe('DEPLOYMENT_SCHEMA_MISMATCH');
+  expect(result.body.error.message).toContain('database upgrade');
+  expect(result.body.data).toBeUndefined();
+  expect(state.queries.some(q=>q.table==='profiles'||q.table==='user_roles')).toBe(false);
+ });
  it.each([null,'invalid',{},Number.MAX_VALUE])('rejects malformed MFA freshness evidence: %s',async(timestamp)=>{
   const token=`test.${Buffer.from(JSON.stringify({sub:ids.super,session_id:ids.super,amr:[{method:'totp',timestamp}]})).toString('base64url')}.test`;
   const response=await request(app).post('/api/admin/operations/jobs/run').set('Authorization',`Bearer ${token}`).send({kind:'retention'}).expect(403);

@@ -80,6 +80,7 @@ Service zones are not pre-loaded. An administrator must add verified WGS84 bound
 | `npm run dev` | API and web app with reload |
 | `npm run build` | Production build of both workspaces |
 | `npm run typecheck` | TypeScript check of both workspaces |
+| `npm run check:deployment` | Read-only check of the configured database's operations tables, schema version and session function; fails if migrations 015–016 are missing. Does not apply migrations. |
 | `npm test` | Unit, API and database tests (no external services needed) |
 | `npm run test:e2e` | Browser tests on desktop, tablet and mobile against isolated servers. First run: `npx playwright install chromium` |
 | `npm start` | Run the built API |
@@ -99,6 +100,8 @@ The current repair's findings, changed files and verification evidence are in [d
 Live at https://pawsconnect-one.vercel.app. One Vercel project serves both parts: the web app as static files from `client/dist`, and the Express API as a serverless function (`api/index.ts`) that receives every `/api/*` request. Routing is in `vercel.json`.
 
 To redeploy after changes:
+
+Apply required migrations first, then require a successful `npm run check:deployment` against the same Supabase project configured in Vercel. A GitHub push does not apply SQL. See [account-page schema mismatch troubleshooting](docs/OPERATIONS.md).
 
 ```bash
 npx vercel build --prod
