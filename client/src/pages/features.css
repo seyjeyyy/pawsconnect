@@ -154,6 +154,17 @@
   .account-sidebar nav a { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.7rem; border-radius: 10px; font-size: 0.9rem; color: var(--ink); white-space: nowrap; }
   .account-sidebar nav a:hover { background: var(--cream); }
   .account-sidebar nav a.active { background: var(--tint); color: var(--orange-dark); font-weight: 700; }
+  .nav-grouped { gap: 4px; }
+  .nav-group { border-top: 1px solid var(--line); padding-top: 4px; }
+  .nav-group summary { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.7rem; border-radius: 10px; list-style: none; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); user-select: none; }
+  .nav-group summary::-webkit-details-marker { display: none; }
+  .nav-group summary:hover { background: var(--cream); color: var(--navy); }
+  .nav-group summary span { flex: 1; }
+  .nav-group summary small { min-width: 1.4rem; padding: 0 0.35rem; border-radius: 999px; background: var(--cream-deep); color: var(--brown); font-size: 0.68rem; letter-spacing: 0; text-align: center; }
+  .nav-group summary svg { flex: none; transition: transform 0.2s; }
+  .nav-group[open] summary svg { transform: rotate(180deg); }
+  .nav-group[open] summary { color: var(--navy); }
+  .nav-group > a { margin-left: 0.35rem; }
   .account-identity { display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
   .account-identity > span { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--orange); color: var(--white); font-weight: 750; }
   .account-identity div { min-width: 0; }
@@ -167,6 +178,8 @@
     .dashboard-layout { grid-template-columns: 1fr; gap: 1.25rem; }
     .account-sidebar { position: static; max-height: none; }
     .account-sidebar nav { display: flex; overflow-x: auto; padding-bottom: 0.4rem; }
+    /* Grouped menus are already compact when collapsed, so on small screens they stack instead of scrolling sideways. */
+    .account-sidebar nav.nav-grouped { display: grid; overflow-x: visible; padding-bottom: 0; }
   }
 
   .account-welcome { position: relative; overflow: hidden; background: var(--navy); color: var(--white); border-radius: 24px; padding: 2rem; }
