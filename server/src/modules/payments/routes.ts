@@ -25,7 +25,7 @@ paymentRouter.post('/payments/create', authenticate, async (req, res) => {
   if (existing?.checkout_url) { res.json({ data: { id: existing.id, checkout_url: existing.checkout_url, status: existing.status } }); return; }
   // A pending row without a URL means an earlier attempt was interrupted. Reusing its id as the
   // idempotency key makes Stripe return that attempt's session rather than creating a second one.
-  const transaction = existing ?? assertDb(await db().from('payment_transactions').insert({ user_id: req.actor!.id, resource_type, resource_id, amount_centavos: amount, currency: 'PHP', provider: 'stripe' }).select().single());
+  const transaction = existing ?? assertDb(await db().from('payment_transactions').insert({ user_id: req.actor!.id, resource_type, resource_id, amount_centavos: amount, currency: 'PHP', provider: 'stripe', livemode: stripeLiveMode() }).select().single());
   try {
     const session = await createCheckout({ type: resource_type, id: resource_id, amount }, transaction.id);
     if (!session.url) throw new ApiError(502, 'PAYMENT_PROVIDER_ERROR', 'The payment provider did not return a checkout link.');

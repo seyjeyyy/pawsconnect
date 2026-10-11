@@ -17,18 +17,10 @@ describe('API foundation', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff');
   });
 
-  it('serves the catalog as labelled, unpurchasable sample data', async () => {
-    const res = await request(app).get('/api/products?limit=3').expect(200);
-    expect(res.body.meta).toMatchObject({ sample: true, limit: 3 });
-    expect(res.body.data).toHaveLength(3);
-    for (const product of res.body.data) expect(product).toMatchObject({ is_sample: true, stock_quantity: 0 });
-  });
-
-  it('filters sample pets and returns 404 for an unknown one', async () => {
-    const cats = await request(app).get('/api/pets?species=cat').expect(200);
-    expect(cats.body.data.every((p: { species: string }) => p.species === 'cat')).toBe(true);
-    const missing = await request(app).get('/api/pets/30000000-0000-4000-8000-00000000ffff').expect(404);
-    expect(missing.body.error.code).toBe('NOT_FOUND');
+  it.each(['/products?limit=3','/categories','/pets?species=cat','/pets/30000000-0000-4000-8000-00000000ffff'])('returns an honest unavailable state for %s without Supabase', async path => {
+    const res = await request(app).get('/api'+path).expect(503);
+    expect(res.body.error.code).toBe('SETUP_REQUIRED');
+    expect(res.body.data).toBeUndefined();
   });
 
   it('rejects invalid query parameters with a structured validation error', async () => {

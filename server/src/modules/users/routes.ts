@@ -71,7 +71,14 @@ userRouter.post('/uploads/signed-url', authenticate, async (req, res) => {
 });
 userRouter.post('/uploads/read-url', authenticate, async (req, res) => {
   const { bucket, path } = z.object({ bucket: z.enum(['rescue-evidence', 'adoption-documents']), path: z.string().max(500).regex(/^[a-f0-9-]{36}\/[a-f0-9-]{36}\.(jpg|png|webp|pdf)$/) }).strict().parse(req.body);
-  if (!path.startsWith(`${req.actor!.id}/`) && !isStaff(req.actor!.roles)) throw new ApiError(403, 'FORBIDDEN', 'You cannot access this private document.');
+  if (!path.startsWith(`${req.actor!.id}/`) && !isStaff(req.actor!.roles)) {
+    let allowed = false;
+    if (bucket === 'rescue-evidence' && req.actor!.roles.some(role => ['rescue_personnel','volunteer'].includes(role))) {
+      const photo = assertDb(await db().from('stray_report_photos').select('report_id').eq('storage_path', path).maybeSingle());
+      if (photo) allowed = Boolean(assertDb(await db().from('rescue_assignments').select('id').eq('report_id', photo.report_id).eq('assigned_to', req.actor!.id).in('status', ['assigned','in_progress','completed']).maybeSingle()));
+    }
+    if (!allowed) throw new ApiError(403, 'FORBIDDEN', 'You cannot access this private document.');
+  }
   const data = assertDb(await db().storage.from(bucket).createSignedUrl(path, 120));
   res.json({ data: { signed_url: data.signedUrl, expires_in: 120 } });
 });

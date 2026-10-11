@@ -261,16 +261,11 @@ describe('order privacy', () => {
     await expect(asUser(db, ana, tx => tx.query(`update public.orders set status = 'paid' where id = $1`, [o.id]))).rejects.toThrow(/permission denied/);
   });
 
-  it('lets only staff change the catalog', async () => {
-    // Catalog tables are writable through RLS by staff, so for a customer the
-    // statement is allowed to run but must match no rows and insert nothing.
-    const attempt = await asUser(db, ana, tx => tx.query(`update public.products set price_centavos = 1 where id = $1`, [bowl]));
-    expect(attempt.affectedRows).toBe(0);
-    await expect(asUser(db, ana, tx => tx.query(`insert into public.products (name, slug, price_centavos, is_published) values ('Free Stuff', 'free-stuff', 0, true)`))).rejects.toThrow(/row-level security/);
-    await expect(asUser(db, ana, tx => tx.query(`insert into public.coupons (code, discount_percent, expires_at) values ('FREE', 100, now() + interval '1 day')`))).rejects.toThrow(/row-level security/);
+  it('requires the audited API for catalog changes, including by staff', async () => {
+    for (const user of [ana, staff]) {
+      await expect(asUser(db, user, tx => tx.query('update public.products set price_centavos = 1 where id = $1', [bowl]))).rejects.toThrow(/permission denied/);
+      await expect(asUser(db, user, tx => tx.query("insert into public.products (name, slug, price_centavos, is_published) values ('Free Stuff', 'free-stuff', 0, true)"))).rejects.toThrow(/permission denied/);
+      await expect(asUser(db, user, tx => tx.query("insert into public.coupons (code, discount_percent, expires_at) values ('FREE', 100, now() + interval '1 day')"))).rejects.toThrow(/permission denied/);
+    }
     expect(Number((await one<{ price_centavos: number }>('select price_centavos from public.products where id = $1', [bowl])).price_centavos)).toBe(12000);
-
-    const byStaff = await asUser(db, staff, tx => tx.query(`update public.products set description = 'Stainless steel, 500 ml' where id = $1`, [bowl]));
-    expect(byStaff.affectedRows).toBe(1);
-  });
-});
+  });});

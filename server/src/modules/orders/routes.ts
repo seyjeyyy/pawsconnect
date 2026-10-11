@@ -19,27 +19,23 @@ commerceRouter.get('/cart', async (req, res) => {
 });
 commerceRouter.post('/cart/items', async (req, res) => {
   const input = z.object({ product_id: uuid, variant_id: uuid.optional(), quantity: z.number().int().min(1).max(99) }).strict().parse(req.body);
-  const product = assertDb(await db().from('products').select('id,is_published,is_sample').eq('id', input.product_id).single());
-  if (!product.is_published || product.is_sample) throw new ApiError(409, 'UNAVAILABLE', 'This product is not available for purchase.');
-  if (input.variant_id) {
-    const variant = assertDb(await db().from('product_variants').select('id').eq('id', input.variant_id).eq('product_id', input.product_id).eq('is_active', true).maybeSingle());
-    if (!variant) throw new ApiError(400, 'INVALID_VARIANT', 'Select a valid product variant.');
-  }
-  const current = await cart(req.actor!.id);
-  let query = db().from('cart_items').select('id').eq('cart_id', current.id).eq('product_id', input.product_id);
-  query = input.variant_id ? query.eq('variant_id', input.variant_id) : query.is('variant_id', null);
-  const existing = assertDb(await query.maybeSingle());
-  const data = existing ? assertDb(await db().from('cart_items').update({ quantity: input.quantity }).eq('id', existing.id).select().single()) : assertDb(await db().from('cart_items').insert({ ...input, cart_id: current.id }).select().single());
+  const data = assertDb(await db().rpc('set_cart_item', { p_actor_id: req.actor!.id, p_product_id: input.product_id, p_variant_id: input.variant_id ?? null, p_quantity: input.quantity }));
   res.status(201).json({ data });
 });
 commerceRouter.patch('/cart/items/:id', async (req, res) => {
   const { quantity } = z.object({ quantity: z.number().int().min(1).max(99) }).strict().parse(req.body);
   const current = await cart(req.actor!.id);
-  res.json({ data: assertDb(await db().from('cart_items').update({ quantity }).eq('id', uuid.parse(req.params.id)).eq('cart_id', current.id).select().single()) });
+  const item = assertDb(await db().from('cart_items').select('product_id,variant_id').eq('id', uuid.parse(req.params.id)).eq('cart_id', current.id).single());
+  res.json({ data: assertDb(await db().rpc('set_cart_item', { p_actor_id: req.actor!.id, p_product_id: item.product_id, p_variant_id: item.variant_id, p_quantity: quantity })) });
 });
 commerceRouter.delete('/cart/items/:id', async (req, res) => {
   const current = await cart(req.actor!.id);
   assertDb(await db().from('cart_items').delete().eq('id', uuid.parse(req.params.id)).eq('cart_id', current.id));
+  res.json({ data: { deleted: true } });
+});
+commerceRouter.delete('/cart', async (req, res) => {
+  const current = await cart(req.actor!.id);
+  assertDb(await db().from('cart_items').delete().eq('cart_id', current.id));
   res.json({ data: { deleted: true } });
 });
 commerceRouter.post('/orders/quote', async (req, res) => {

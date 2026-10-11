@@ -6,7 +6,7 @@ const client = configured ? createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE
   auth: { autoRefreshToken: false, persistSession: false },
 }) : null;
 export function db() {
-  if (!client) throw new ApiError(503, 'SETUP_REQUIRED', 'Connect Supabase to enable accounts, saved records, and transactions. The current catalog is a sample preview.');
+  if (!client) throw new ApiError(503, 'SETUP_REQUIRED', 'Connect Supabase to enable accounts, saved records, and transactions.');
   return client;
 }
 export function publicAuth() {

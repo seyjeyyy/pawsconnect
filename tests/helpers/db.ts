@@ -53,18 +53,23 @@ const supabaseShim = `
 export const migrationFiles = () => readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
 
 /** A fresh in-process Postgres with PostGIS and every migration applied. */
-export async function createDatabase() {
+export async function createDatabase(options: { through?: string } = {}) {
   const db = await PGlite.create({ extensions: { pgcrypto, postgis } });
   await db.exec(supabaseShim);
   await db.exec('set search_path = public, extensions');
-  for (const file of migrationFiles()) {
+  await applyMigrations(db, file => !options.through || file <= options.through);
+  return db;
+}
+
+/** Applies the migration files accepted by `include`, in order. Used to test upgrading a database that already holds data. */
+export async function applyMigrations(db: PGlite, include: (file: string) => boolean) {
+  for (const file of migrationFiles().filter(include)) {
     try {
       await db.exec(readFileSync(migrationsDir + file, 'utf8'));
     } catch (error) {
       throw new Error(`Migration ${file} failed: ${(error as Error).message}`, { cause: error });
     }
   }
-  return db;
 }
 
 export async function createUser(db: PGlite, email: string, metadata: Record<string, unknown> = {}) {

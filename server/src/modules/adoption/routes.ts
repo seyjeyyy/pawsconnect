@@ -11,7 +11,7 @@ adoptionRouter.post('/adoption-applications', async (req, res) => {
   if (input.document_paths.some(path => !path.startsWith(`${req.actor!.id}/`) || path.includes('..'))) throw new ApiError(403, 'INVALID_DOCUMENT', 'Application documents must belong to your account.');
   const pet = assertDb(await db().from('pets').select('id,status,is_sample,is_published').eq('id', input.pet_id).single());
   if (!pet.is_published || pet.status !== 'available' || pet.is_sample) throw new ApiError(409, 'PET_UNAVAILABLE', 'This pet is not currently accepting adoption applications.');
-  const data = assertDb(await db().from('adoption_applications').insert({ ...input, user_id: req.actor!.id }).select().single());
+  const data = assertDb(await db().rpc('submit_adoption_application', { p_actor_id: req.actor!.id, p_pet_id: input.pet_id, p_motivation: input.motivation, p_household: input.household, p_document_paths: input.document_paths }));
   res.status(201).json({ data });
 });
 adoptionRouter.get('/adoption-applications/mine', async (req, res) => {

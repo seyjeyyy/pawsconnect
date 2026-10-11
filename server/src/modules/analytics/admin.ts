@@ -4,6 +4,7 @@ import { db } from '../../config/supabase.js';
 import { authenticate, authorize, isStaff } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
+import { connectedAdminRouter } from './connected.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -13,7 +14,7 @@ export const adminRouter = Router();
 // actions check again that the actor is the assigned person.
 const recordId = '[0-9a-f-]{36}';
 const fieldAccess: Record<string, { read: string[]; write: RegExp[] }> = {
-  veterinarian: { read: ['pets', 'health', 'intake'], write: [/^POST \/health$/, new RegExp(`^PATCH /pets/${recordId}/behavior$`)] },
+  veterinarian: { read: ['pets', 'health', 'intake', 'lookups/pets'], write: [/^POST \/health$/, new RegExp(`^PATCH /pets/${recordId}/behavior$`)] },
   rescue_personnel: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
   // Approved volunteers can be assigned to a rescue by staff.
   volunteer: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
@@ -31,7 +32,12 @@ export const workspaceAccess: RequestHandler = (req, _res, next) => {
   next();
 };
 adminRouter.use(authenticate, workspaceAccess);
-const resources: Record<string, { table: string; search?: string; order: string; select?: string; admin?: boolean; key?: string }> = {
+adminRouter.use(connectedAdminRouter);
+const resources: Record<string, { table: string; search?: string; order: string; select?: string; admin?: boolean; super?: boolean; key?: string }> = {
+  security_events: { table: 'security_events', order: 'created_at', super: true },
+  security_alerts: { table: 'security_alerts', order: 'created_at', super: true },
+  critical_approvals: { table: 'critical_approvals', order: 'created_at', super: true },
+  refunds: { table: 'refunds', order: 'created_at' },
   products: { table: 'products', search: 'name', order: 'created_at' }, categories: { table: 'product_categories', search: 'name', order: 'name' },
   orders: { table: 'orders', search: 'order_number', order: 'created_at', select: '*,order_items(*),shipments(*)' },
   pets: { table: 'pets', search: 'name', order: 'created_at', select: '*,pet_behavior_profiles(*)' },
@@ -87,8 +93,7 @@ adminRouter.post('/adoptions/:id/finalize', async (req, res) => {
 });
 adminRouter.post('/adoptions/:id/appointments', async (req, res) => {
   const input = z.object({ scheduled_at: z.string().datetime({ offset: true }), location: z.string().min(5).max(500), notes: z.string().max(2000).optional() }).strict().parse(req.body);
-  const data = assertDb(await db().from('adoption_appointments').insert({ ...input, application_id: uuid.parse(req.params.id) }).select().single());
-  await audit(req.actor!.id, 'appointment.created', 'adoption_appointments', data.id);
+  const data = assertDb(await db().rpc('schedule_adoption_appointment', { p_actor_id: req.actor!.id, p_application_id: uuid.parse(req.params.id), p_scheduled_at: input.scheduled_at, p_location: input.location, p_notes: input.notes ?? null }));
   res.status(201).json({ data });
 });
 adminRouter.patch('/pets/:id/behavior', async (req, res) => {
@@ -118,8 +123,7 @@ adminRouter.patch('/transport/:id/status', async (req, res) => {
 adminRouter.patch('/transport/:id/assignment', async (req, res) => {
   const input = z.object({ driver_id: uuid, vehicle_id: uuid, confirmed_schedule: z.string().datetime({ offset: true }).refine(v => Date.parse(v) > Date.now()) }).strict().parse(req.body);
   const id = uuid.parse(req.params.id);
-  const data = assertDb(await db().rpc('transition_transport', { p_actor_id: req.actor!.id, p_request_id: id, p_status: 'scheduled', p_driver_id: input.driver_id, p_vehicle_id: input.vehicle_id }));
-  assertDb(await db().from('transport_requests').update({ confirmed_schedule: input.confirmed_schedule }).eq('id', id).eq('status', 'scheduled'));
+  const data = assertDb(await db().rpc('schedule_transport', { p_actor_id: req.actor!.id, p_request_id: id, p_driver_id: input.driver_id, p_vehicle_id: input.vehicle_id, p_schedule: input.confirmed_schedule }));
   res.json({ data: { ...data, confirmed_schedule: input.confirmed_schedule } });
 });
 adminRouter.post('/transport/:id/quote', async (req, res) => {
@@ -159,10 +163,12 @@ adminRouter.post('/volunteers/:id/tasks', async (req, res) => {
 });
 adminRouter.post('/users/:id/roles', authorize('administrator'), async (req, res) => {
   const { role_name } = z.object({ role_name: z.enum(['buyer', 'adopter', 'donor', 'community_reporter', 'volunteer', 'rescue_personnel', 'shelter_driver', 'shelter_staff', 'veterinarian', 'administrator']) }).strict().parse(req.body);
+  if (role_name === 'administrator') throw new ApiError(409, 'APPROVAL_REQUIRED', 'Submit an elevated access request for independent super administrator review.');
   assertDb(await db().rpc('assign_user_role', { p_actor_id: req.actor!.id, p_user_id: uuid.parse(req.params.id), p_role_name: role_name, p_enabled: true }));
   res.json({ data: { assigned: true } });
 });
 adminRouter.delete('/users/:id/roles/:role', authorize('administrator'), async (req, res) => {
+  if (['administrator','super_administrator'].includes(String(req.params.role))) throw new ApiError(409, 'APPROVAL_REQUIRED', 'Submit an elevated access request for independent review.');
   assertDb(await db().rpc('assign_user_role', { p_actor_id: req.actor!.id, p_user_id: uuid.parse(req.params.id), p_role_name: z.string().max(50).parse(req.params.role), p_enabled: false }));
   res.json({ data: { removed: true } });
 });
@@ -183,7 +189,8 @@ adminRouter.patch('/reviews/:id/approval', async (req, res) => {
 adminRouter.get('/:resource', async (req, res) => {
   const key = z.string().parse(req.params.resource), resource = resources[key];
   if (!resource) throw new ApiError(404, 'NOT_FOUND', 'Administration resource not found.');
-  if (resource.admin && !req.actor!.roles.includes('administrator')) throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
+  if (resource.super && !req.actor!.roles.includes('super_administrator')) throw new ApiError(403, 'FORBIDDEN', 'Super administrator access required.');
+  if (resource.admin && !req.actor!.roles.some(role => ['administrator','super_administrator'].includes(role))) throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
   const { page, limit, q } = pagination.parse(req.query);
   const { status, sort, direction } = z.object({ status: z.string().max(50).optional(), sort: z.enum(['created_at', 'name', 'status']).optional(), direction: z.enum(['asc', 'desc']).default('desc') }).parse(req.query);
   let query = db().from(resource.table).select(resource.select ?? '*', { count: 'exact' });
@@ -191,7 +198,7 @@ adminRouter.get('/:resource', async (req, res) => {
     // Field roles see only the work assigned to them.
     if (key === 'transport') query = query.eq('driver_id', req.actor!.id);
     if (key === 'rescue') {
-      const assignments = assertDb<{ report_id: string }[]>(await db().from('rescue_assignments').select('report_id').eq('assigned_to', req.actor!.id));
+      const assignments = assertDb<{ report_id: string }[]>(await db().from('rescue_assignments').select('report_id').eq('assigned_to', req.actor!.id).in('status', ['assigned','in_progress','completed']));
       if (!assignments.length) { res.json({ data: [], meta: { total: 0, page, limit } }); return; }
       query = query.in('id', assignments.map(assignment => assignment.report_id));
     }

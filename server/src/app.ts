@@ -14,6 +14,8 @@ import { catalogRouter } from './modules/products/routes.js';
 import { rescueRouter } from './modules/rescue/routes.js';
 import { transportRouter } from './modules/transport/routes.js';
 import { userRouter } from './modules/users/routes.js';
+import { connectedRouter } from './modules/users/connected.js';
+import { recordSecurityFailure } from './middleware/security.js';
 import { ApiError, errorHandler } from './utils/errors.js';
 
 export function createApp() {
@@ -31,9 +33,9 @@ export function createApp() {
   app.use(express.json({ limit: '100kb' }));
 
   const api = Router();
-  // Booleans only, never secrets: lets the client label preview mode honestly.
+  // Booleans only, never secrets: lets the client report unavailable integrations honestly.
   api.get('/health', (_req, res) => {
-    res.json({ data: { status: 'ok', environment: env.NODE_ENV, integrations } });
+    res.json({ data: { status: 'ok', environment: env.NODE_ENV, integrations, payment_mode: !integrations.stripe ? 'unavailable' : env.STRIPE_SECRET_KEY?.startsWith('sk_live_') ? 'live' : 'test' } });
   });
   api.use('/auth/register', authLimiter);
   api.use(['/contact', '/newsletter'], formLimiter);
@@ -51,6 +53,7 @@ export function createApp() {
   api.use(userRouter);
   api.use(paymentRouter);
   api.use('/admin', adminRouter);
+  api.use(connectedRouter);
   api.use(commerceRouter);
   api.use(adoptionRouter);
   api.use(transportRouter);
@@ -60,6 +63,6 @@ export function createApp() {
   app.use('/api', () => {
     throw new ApiError(404, 'NOT_FOUND', 'This API endpoint does not exist.');
   });
-  app.use(errorHandler);
+  app.use(recordSecurityFailure, errorHandler);
   return app;
 }

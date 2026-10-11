@@ -10,6 +10,7 @@ export async function apiEnvelope<T>(path:string,options:RequestInit={}):Promise
  const body=await response.json().catch(()=>null);
  if(!response.ok) throw new ApiError(body?.error?.message || 'The service is unavailable. Please try again.',response.status,body?.error?.code);
  if(!body || !('data' in body)) throw new ApiError('The service returned an unexpected response.',502);
+ if(options.method && !['GET','HEAD'].includes(options.method.toUpperCase())) window.dispatchEvent(new Event('pawsconnect:changed'));
  return body;
 }
 export async function api<T=any>(path:string,options:RequestInit={}):Promise<T>{return (await apiEnvelope<T>(path,options)).data;}

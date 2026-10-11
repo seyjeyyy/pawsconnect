@@ -16,3 +16,4 @@ supabase/.branches/
 .vercel
 .env*
 api/package-lock.json
+supabase/APPLY_*.sql

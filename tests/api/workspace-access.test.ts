@@ -15,7 +15,7 @@ function allowed(roles: string[], method: string, path: string) {
 const community = ['buyer', 'adopter', 'donor', 'community_reporter'];
 
 describe('workspace access by role', () => {
-  it.each([['administrator'], ['shelter_staff']])('%s reaches every workspace route', (role) => {
+  it.each([['administrator'], ['shelter_staff'], ['super_administrator']])('%s reaches every operational workspace route', (role) => {
     for (const [method, path] of [['GET', '/analytics'], ['GET', '/orders'], ['GET', '/rescue'], ['POST', '/products'], ['PATCH', `/orders/${id}/status`], ['POST', '/inventory'], ['POST', '/health']]) {
       expect(allowed([...community, role], method, path), `${method} ${path}`).toBe(true);
     }

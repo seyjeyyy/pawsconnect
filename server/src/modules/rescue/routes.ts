@@ -11,9 +11,8 @@ rescueRouter.post('/stray-reports', optionalAuth, async (req, res) => {
   const { photo_paths, ...input } = strayInput.parse(req.body);
   if (photo_paths.some(path => !req.actor || !path.startsWith(`${req.actor.id}/`) || path.includes('..'))) throw new ApiError(403, 'INVALID_PHOTO', 'Report photos must belong to your account.');
   const coverage = await eligibility('rescue', input.latitude, input.longitude);
-  const report = assertDb(await db().from('stray_reports').insert({ ...input, user_id: req.actor?.id ?? null, coverage_status: coverage.status }).select().single());
-  if (photo_paths.length) assertDb(await db().from('stray_report_photos').insert(photo_paths.map(storage_path => ({ report_id: report.id, storage_path }))));
-  res.status(201).json({ data: { id: report.id, status: report.status, coverage_status: coverage.status, message: 'Report saved for staff verification. Submission does not dispatch a rescue team.' } });
+  const report = assertDb(await db().rpc('submit_stray_report', { p_actor_id: req.actor?.id ?? null, p_report: input, p_photo_paths: photo_paths }));
+  res.status(201).json({ data: { id: report.id, status: report.status, coverage_status: report.coverage_status, message: 'Report saved for staff verification. Submission does not dispatch a rescue team.' } });
 });
 rescueRouter.get('/stray-reports/mine', authenticate, async (req, res) => {
   res.json({ data: assertDb(await db().from('stray_reports').select('*,stray_report_photos(*)').eq('user_id', req.actor!.id).order('created_at', { ascending: false })) });

@@ -1,7 +1,7 @@
 // What each role sees. The API enforces the same rules (server/src/modules/analytics/admin.ts);
 // this file only decides which screens and menu items to show.
 
-const staff = ['administrator', 'shelter_staff'];
+const staff = ['super_administrator', 'administrator', 'shelter_staff'];
 const field = ['veterinarian', 'rescue_personnel', 'shelter_driver'];
 
 /** Administrators and shelter staff: the full shelter workspace. */
@@ -10,7 +10,7 @@ export const isStaffRole = (roles: string[]) => roles.some(role => staff.include
 export const isOperational = (roles: string[]) => roles.some(role => staff.includes(role) || field.includes(role));
 
 const administratorOnly = ['users', 'audit_logs'];
-const staffSections = ['overview', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
+const staffSections = ['overview', 'payments', 'refunds', 'reviews', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
 const fieldSections: Record<string, string[]> = {
   veterinarian: ['pets', 'health'],
   rescue_personnel: ['rescue'],
@@ -21,6 +21,7 @@ const fieldSections: Record<string, string[]> = {
 
 /** Workspace sections this account may open, in menu order. Empty means no workspace access. */
 export function workspaceSections(roles: string[]): string[] {
+  if (roles.includes('super_administrator')) return [...staffSections, ...administratorOnly, 'security', 'security_events', 'security_alerts', 'critical_approvals'];
   if (roles.includes('administrator')) return [...staffSections, ...administratorOnly];
   if (roles.includes('shelter_staff')) return staffSections;
   return [...new Set(roles.flatMap(role => fieldSections[role] ?? []))];
@@ -41,7 +42,7 @@ export const fieldStatusOptions: Record<string, string[]> = {
 };
 
 const titles: [string, string][] = [
-  ['administrator', 'Administrator'], ['shelter_staff', 'Shelter staff'], ['veterinarian', 'Veterinarian'],
+  ['super_administrator', 'Super administrator'], ['administrator', 'Administrator'], ['shelter_staff', 'Shelter staff'], ['veterinarian', 'Veterinarian'],
   ['rescue_personnel', 'Rescue personnel'], ['shelter_driver', 'Shelter driver'], ['volunteer', 'Volunteer'],
 ];
 /** The most senior role the account holds, for display. */

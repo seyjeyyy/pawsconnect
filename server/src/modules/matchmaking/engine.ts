@@ -58,7 +58,7 @@ export const weights = { activity: 25, home: 20, household: 20, time: 15, experi
 /** Scores only observed, staff-verified factors. Unknown factors reduce confidence, never become a made-up neutral score. */
 export function calculateMatch(answers: Answers, pet: MatchPet) {
   const raw = Array.isArray(pet.pet_behavior_profiles) ? pet.pet_behavior_profiles[0] : pet.pet_behavior_profiles;
-  // Database rows use the shelter's recording terms; the built-in sample profiles are already in scoring terms.
+  // Translate stored behaviour measurements into the scoring engine's terms.
   const isRow = raw != null && ('suitable_homes' in raw || 'care_hours_daily' in raw || 'grooming_level' in raw);
   const profile: Behavior = !raw?.verified_at ? {} : isRow ? behaviorFromRow(raw as BehaviorRow) : raw as Behavior;
   const exclusions: string[] = [], reasons: string[] = [], challenges: string[] = [];

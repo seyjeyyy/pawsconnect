@@ -39,3 +39,6 @@ file_size_limit = "10MiB"
 
 [realtime]
 enabled = true
+[functions.maintenance]
+# A dedicated high-entropy scheduler secret is checked by the handler.
+verify_jwt = false
