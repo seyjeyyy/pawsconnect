@@ -3,16 +3,23 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import { TourProvider } from './components/tour/Tour';
 import Home from './pages/Home';
-import { AdoptPage, PetPage } from './pages/Adoption';
 import { AuthCallbackPage, NotFoundPage, PrivacyPage, TermsPage } from './pages/Info';
-import { CartPage, CheckoutPage, PaymentReturnPage, ProductPage, ShopPage } from './pages/Shop';
 
-// The account module (charting library) and the service forms (form and
-// validation libraries) load on demand to keep the storefront bundle small.
+// Load maps, checkout forms, charts and workspace tools only on their routes.
+const adoption = () => import('./pages/Adoption');
+const AdoptPage = lazy(() => adoption().then(m => ({ default: m.AdoptPage })));
+const PetPage = lazy(() => adoption().then(m => ({ default: m.PetPage })));
+const shop = () => import('./pages/Shop');
+const ShopPage = lazy(() => shop().then(m => ({ default: m.ShopPage })));
+const ProductPage = lazy(() => shop().then(m => ({ default: m.ProductPage })));
+const CartPage = lazy(() => shop().then(m => ({ default: m.CartPage })));
+const CheckoutPage = lazy(() => shop().then(m => ({ default: m.CheckoutPage })));
+const PaymentReturnPage = lazy(() => shop().then(m => ({ default: m.PaymentReturnPage })));
 const account = () => import('./pages/Account');
 const AuthPage = lazy(() => account().then(m => ({ default: m.AuthPage })));
 const DashboardPage = lazy(() => account().then(m => ({ default: m.DashboardPage })));
 const AdminPage = lazy(() => account().then(m => ({ default: m.AdminPage })));
+const OperationsPage = lazy(() => import('./pages/Operations'));
 const services = () => import('./pages/Services');
 const MatchPage = lazy(() => services().then(m => ({ default: m.MatchPage })));
 const RescuePage = lazy(() => services().then(m => ({ default: m.RescuePage })));
@@ -53,6 +60,8 @@ export default function App() {
           <Route path="account" element={<DashboardPage />} />
           <Route path="account/:tab" element={<DashboardPage />} />
           <Route path="admin" element={<AdminPage />} />
+          <Route path="admin/operations" element={<OperationsPage />} />
+          <Route path="admin/operations/:section" element={<OperationsPage />} />
           <Route path="admin/:section" element={<AdminPage />} />
           {/* Paths used in notification links written by the database. */}
           <Route path="orders/:id" element={<Navigate to="/account/orders" replace />} />

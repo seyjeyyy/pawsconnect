@@ -73,3 +73,26 @@ describe('upgrading a populated database from 008', () => {
     }
   });
 });
+
+it('upgrades a populated 014 database to 016 without changing users, access or customer records',async()=>{
+ const previous='202610110014_separate_system_and_shelter_roles.sql';
+ const db=await createDatabase({through:previous});
+ try{
+  const buyer=await createUser(db,'upgrade-buyer@test.local');
+  const operator=await createUser(db,'upgrade-operator@test.local');
+  await db.query("insert into user_roles(user_id,role_name) values($1,'super_administrator')",[operator]);
+  await db.query("insert into customer_addresses(user_id,recipient_name,phone,line1,city,province) values($1,'Upgrade fixture','09000000000','Fixture address','Malolos','Bulacan')",[buyer]);
+  const snapshot=async()=>({
+   users:(await db.query('select * from profiles order by id')).rows,
+   roles:(await db.query('select * from user_roles order by user_id,role_name')).rows,
+   addresses:(await db.query('select * from customer_addresses order by id')).rows,
+   audit:(await db.query('select * from audit_logs order by id')).rows,
+  });
+  const before=await snapshot();
+  await applyMigrations(db,file=>file>previous);
+  expect(await snapshot()).toEqual(before);
+  expect((await db.query("select mode,schema_version from operations_config")).rows).toEqual([{mode:'normal',schema_version:'016'}]);
+  expect((await db.query('select * from account_access_controls')).rows).toEqual([]);
+  expect((await db.query('select public.account_session_allowed($1,$1) allowed',[buyer])).rows).toEqual([{allowed:true}]);
+ }finally{await db.close();}
+});

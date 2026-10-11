@@ -2,7 +2,7 @@
 
 **Adopt. Shop. Rescue. Donate. Deliver.**
 
-Pet supplies e-commerce, AI-assisted adoption matching, stray rescue reporting, shelter-managed pet transport and donations for Rowena's Paw Shelter, Bulacan, Philippines.
+Pet supplies e-commerce, AI-assisted adoption matching, stray rescue reporting, shelter-managed pet transport and donations for PawsConnect, Bulacan, Philippines.
 
 | Layer | Stack |
 | --- | --- |
@@ -27,7 +27,7 @@ With no configuration the app still starts, but it has nothing to show: every li
 ## Connect Supabase
 
 1. Create a project at supabase.com.
-2. Apply the schema. Either install the Supabase CLI and run `supabase link` then `supabase db push`, or paste each file in `supabase/migrations/` into the SQL editor **in filename order**. Then run `supabase/seed.sql` (product categories only).
+2. Apply the schema by pasting each file in `supabase/migrations/` into the SQL editor **in filename order**. Then run `supabase/seed.sql` (product categories only). For the existing hosted project, review the [operations rollout guide](docs/OPERATIONS.md) before applying new migrations 015 and 016; there is no CLI access to the live database from this workspace.
 3. Copy `server/.env.example` to `server/.env` and `client/.env.example` to `client/.env`, and fill in:
 
    | File | Variable | Value |
@@ -49,6 +49,8 @@ With no configuration the app still starts, but it has nothing to show: every li
 6. Make an account the first super administrator the same way, with `'super_administrator'` in place of `'administrator'`. Use a separate account for it. The super administrator runs the system and nothing else: it assigns roles under **People & access**, reads the audit trail, and works the security centre (recorded refusals, alerts). It has no shelter screens, and the administrator has no system screens.
 
    Granting or removing administrator or super administrator access afterwards takes two super administrators: one files the request and another approves it.
+
+7. Workspace users must enroll and verify a TOTP authenticator under **Account settings**. Critical system changes require a code verified within ten minutes. The super administrator's **IT Operations** area adds recorded monitoring, incidents, jobs, maintenance and configuration. External backup/release workers are unconfigured by default; production restore dispatch is disabled pending an independent recovery coordinator. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for exact setup, worker contracts and limitations.
 
 ## Optional integrations
 
@@ -79,7 +81,7 @@ Service zones are not pre-loaded. An administrator must add verified WGS84 bound
 | `npm run build` | Production build of both workspaces |
 | `npm run typecheck` | TypeScript check of both workspaces |
 | `npm test` | Unit, API and database tests (no external services needed) |
-| `npm run test:e2e` | Browser tests on desktop and mobile, against their own unconfigured servers. First run: `npx playwright install chromium` |
+| `npm run test:e2e` | Browser tests on desktop, tablet and mobile against isolated servers. First run: `npx playwright install chromium` |
 | `npm start` | Run the built API |
 
 ## How the tests check the database
@@ -89,6 +91,8 @@ Service zones are not pre-loaded. An administrator must add verified WGS84 bound
 ## Project status
 
 See [docs/STATUS.md](docs/STATUS.md) for what is verified, what is written but not yet verified end to end, and known gaps.
+
+The current repair's findings, changed files and verification evidence are in [docs/REPAIR_REPORT.md](docs/REPAIR_REPORT.md). Run database and browser suites sequentially on ordinary laptops; each database test worker starts a PostGIS-enabled PostgreSQL instance. CI runs these checks without deployment credentials.
 
 ## Deployment (Vercel)
 
@@ -107,11 +111,11 @@ The deployed site has its own Stripe webhook endpoint (`/api/webhooks/stripe`) w
 
 Things that differ from running locally:
 
-- **Scheduled jobs do not run on serverless.** The in-process scheduler only runs under `npm run dev` / `npm start`. Schedule the expiry functions in the database instead (Supabase SQL editor, after enabling the `pg_cron` extension):
+- **Scheduled jobs do not run on serverless.** The in-process scheduler only runs under `npm run dev` / `npm start`. Schedule the expiry functions in the database instead (Supabase SQL editor, after applying migration 015 and enabling the `pg_cron` extension):
 
   ```sql
-  select cron.schedule('expire-order-reservations', '* * * * *', 'select public.expire_order_reservations()');
-  select cron.schedule('expire-pet-reservations', '*/5 * * * *', 'select public.expire_pet_reservations()');
+  select cron.schedule('expire-order-reservations', '* * * * *', $$select public.run_operations_job('expire_order_reservations', null)$$);
+  select cron.schedule('expire-pet-reservations', '*/5 * * * *', $$select public.run_operations_job('expire_pet_reservations', null)$$);
   ```
 - **Rate limits are per server instance**, so they are looser than on a single long-running server. Use a shared store before relying on them under real traffic.
 - Add the site address to Supabase → Authentication → URL Configuration (site URL, plus `/auth/callback` and `/auth/reset` as redirect URLs), or email links will point at localhost.

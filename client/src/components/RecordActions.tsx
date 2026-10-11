@@ -1,3 +1,4 @@
+import {useConfirmation} from './Confirm';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -19,16 +20,18 @@ export function Attachments({ row }: { row: Row }) {
   return <>{(row.document_paths || []).map((path: string) => <PrivateFile key={path} bucket="adoption-documents" path={path} />)}{(row.stray_report_photos || []).map((photo: Row) => <PrivateFile key={photo.id} bucket="rescue-evidence" path={photo.storage_path} />)}</>;
 }
 export function AdminRecordActions({ resource, row, busy, onAction }: { resource: string; row: Row; busy: boolean; onAction: Action }) {
+  const confirm=useConfirmation();
   const { roles } = useAuth();
   const staff = roles.some(role => ['administrator','super_administrator','shelter_staff'].includes(role));
   const id = row.id || row.user_id;
   const submit = (path: string, method = 'POST', transform: (data: Row) => Row = d => d) => async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (busy) return;
     const body = transform(Object.fromEntries(new FormData(event.currentTarget)));
-    if (!window.confirm('Save this change to the selected record?')) return;
+    if (!(await confirm({title:'Save this change?',resource:String(id)})).confirmed) return;
     await onAction(path, method, body);
   };
   return <div className="admin-workflow"><Attachments row={row} />
+    {roles.includes('super_administrator') && resource==='users' && <form className="workflow-form" onSubmit={submit(`/admin/operations/accounts/${id}/access`)}><h3>Account protection</h3><p className="small muted">Suspension blocks PawsConnect API and direct database access. Revocation invalidates existing platform sessions and requires a new sign-in. Elevated role holders must first go through independent access removal.</p><label className="field">Action<select name="action"><option value="revoke_sessions">Revoke existing sessions</option><option value="suspend">Suspend platform access</option><option value="reinstate">Reinstate access (new sign-in required)</option></select></label><label className="field">Reason<textarea name="reason" required minLength={10} maxLength={2000}/></label><button className="btn btn-secondary" disabled={busy}>Review account protection</button></form>}
     {staff && resource === 'adoptions' && <form className="workflow-form" onSubmit={submit(`/admin/adoptions/${id}/appointments`, 'POST', d => ({ ...d, scheduled_at: new Date(d.scheduled_at).toISOString() }))}><h3>Schedule an interview</h3><label className="field">Date and time<input name="scheduled_at" type="datetime-local" required /></label><label className="field">Meeting location<input name="location" required minLength={5} /></label><label className="field">Notes<textarea name="notes" /></label><button className="btn btn-primary" disabled={busy}>Schedule appointment</button></form>}
     {staff && resource === 'rescue' && <form className="workflow-form" onSubmit={submit(`/admin/rescue/${id}/assign`)}><h3>Assign a rescuer</h3><Lookup kind="rescuers" name="assignee_id" label="Authorized rescuer" /><label className="field">Assignment notes<textarea name="notes" /></label><button className="btn btn-primary" disabled={busy || row.status !== 'verified'}>Assign verified report</button></form>}
     {resource === 'pets' && <form className="workflow-form" onSubmit={submit(`/admin/pets/${id}/behavior`, 'PATCH', d => {
@@ -51,7 +54,7 @@ export function AdminRecordActions({ resource, row, busy, onAction }: { resource
   </div>;
 }
 export function SecuritySummary() {
-  const query = useQuery({ queryKey: ['admin','security-summary'], queryFn: () => api<Row>('/admin/security-summary') });
+  const query = useQuery({ queryKey: ['admin','security-summary'], queryFn: ({signal}) => api<Row>('/admin/security-summary',{signal}) });
   if (query.isPending) return <p role="status">Loading recorded security events…</p>;
   if (query.error) return <div role="alert">{query.error.message}<button onClick={() => void query.refetch()}>Retry</button></div>;
   return <><p>{query.data.source_note}</p><div className="stat-grid">{Object.entries(query.data).filter(([, value]) => typeof value === 'number').map(([key, value]) => <div className="card stat-card" key={key}><span>{key.replaceAll('_',' ')}</span><strong>{value}</strong></div>)}</div></>;

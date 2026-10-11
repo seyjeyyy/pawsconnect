@@ -17,6 +17,9 @@ import { userRouter } from './modules/users/routes.js';
 import { connectedRouter } from './modules/users/connected.js';
 import { recordSecurityFailure } from './middleware/security.js';
 import { ApiError, errorHandler } from './utils/errors.js';
+import { operationsPublicRouter, operationsRouter, operationsWorkerRouter } from './modules/operations/routes.js';
+import { maintenanceGuard } from './modules/operations/maintenance.js';
+import { telemetry } from './modules/operations/telemetry.js';
 
 export function createApp() {
   const app = express();
@@ -24,6 +27,7 @@ export function createApp() {
   if (env.TRUST_PROXY_HOPS) app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
   app.use(helmet());
+  app.use(telemetry);
   // Auth uses bearer tokens, not cookies, so credentials are never sent cross-origin.
   app.use(cors({ origin: env.CLIENT_URL, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
 
@@ -42,6 +46,10 @@ export function createApp() {
   // Stray reports may be anonymous, so they get the same abuse limit as the other public forms.
   api.post('/stray-reports', formLimiter);
   api.use('/maps', mapsLimiter);
+  api.use('/operations/worker', operationsWorkerRouter);
+  api.use(operationsPublicRouter);
+  api.use('/admin/operations', operationsRouter);
+  api.use(maintenanceGuard);
 
   // Public and optionally-authenticated routers come first. Routers that begin
   // with `use(authenticate)` reject every request that reaches them, so they

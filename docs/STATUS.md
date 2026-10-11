@@ -2,7 +2,7 @@
 
 Last updated 2026-10-11. "Verified" means it was run and observed working, not just written.
 
-Current totals: 138 unit, API and database tests and 12 browser tests pass; both workspaces typecheck and build. Live at https://pawsconnect-one.vercel.app. The live database is at migration 014.
+Hosted-release baseline: 138 unit, API and database tests and 12 browser tests passed. Live at https://pawsconnect-one.vercel.app; the live database remains at migration 014. The newer local repair, expanded checks and deployment blockers are documented in [REPAIR_REPORT.md](REPAIR_REPORT.md) and the local operations section below.
 
 ## Where the data comes from
 
@@ -107,6 +107,18 @@ System administration and shelter operations are separate lines of authority; ne
 
 The adoption, rescue, transport, donation and volunteer workflows have been run live but have no automated tests of their own yet.
 
+## Local operations repair (not deployed)
+
+The hosted checks above describe the earlier release through migration 014. The current working tree adds migrations **015–016**, which have only been exercised in isolated tests. No production data or deployment was changed by this repair.
+
+- Added the super-administrator IT Operations routes, real SQL-backed configuration, maintenance restrictions, HTTP aggregates, incident timelines, job history and a protected external worker protocol.
+- Added workspace MFA, recent verification for critical system changes, account suspension/session cutoffs and restrictive direct-access policies.
+- Rebuilt role-specific tours with observer-driven positioning, bounded target discovery, keyboard/focus handling, reduced motion, and resumable local/server progress. Added shared confirmation dialogs, bounded requests, error recovery and PawsConnect-only active branding.
+- Added desktop/tablet/mobile browser checks, populated 014 upgrade coverage, an actual isolated database archive restore, and a CI workflow. See [the repair report](REPAIR_REPORT.md) for final results and limitations.
+- Backup/release execution needs an external worker. Managed backup inventory needs a scoped token. Production restore is deliberately unavailable until an external recovery coordinator exists. A hosted Supabase plus Storage staging drill has not been performed.
+
+Setup, migration order, controls and rollback limitations are in [OPERATIONS.md](OPERATIONS.md).
+
 ## Not built
 
 - Refunds stop at the request. A customer can ask and staff can see it; nothing calls Stripe to refund, and there is no approve or decline action.
@@ -115,7 +127,7 @@ The adoption, rescue, transport, donation and volunteer workflows have been run 
 - Notifications reach open pages over Realtime. Email (Resend), SMS and push are not wired.
 - The route preview shows distance and time but does not draw the route.
 - Recurring donations: not offered.
-- Accessibility audit, CI workflow, load testing.
+- Full accessibility audit and load testing. Targeted tour/focus/responsive checks and a local CI workflow are now included; the workflow has not yet run on GitHub.
 
 ## Needs credentials or outside setup
 

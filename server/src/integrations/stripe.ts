@@ -70,7 +70,7 @@ async function request(path: string, method: 'GET' | 'POST', form?: Record<strin
  * the same session instead of opening a second payable one.
  */
 export function createCheckout(resource: { type: string; id: string; amount: number }, idempotencyKey: string) {
-  const label = { order: 'Shop order', donation: 'Donation to Rowena’s Paw Shelter', transport: 'Pet transport service', adoption: 'Adoption processing fee' }[resource.type] ?? 'PawsConnect payment';
+  const label = { order: 'Shop order', donation: 'Donation to PawsConnect', transport: 'Pet transport service', adoption: 'Adoption processing fee' }[resource.type] ?? 'PawsConnect payment';
   return request('/v1/checkout/sessions', 'POST', {
     mode: 'payment',
     'line_items[0][quantity]': '1',

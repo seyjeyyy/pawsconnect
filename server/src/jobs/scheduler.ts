@@ -17,9 +17,10 @@ export function startJobs() {
   if (!integrations.supabase) return () => {};
   const timers = jobs.map(job => {
     const run = async () => {
-      const { data, error } = await db().rpc(job.rpc);
+      const { data, error } = await db().rpc('run_operations_job', { p_kind: job.rpc, p_actor_id: null });
       if (error) console.error(`Job failed (${job.name}):`, error.code || 'unknown');
-      else if (data) console.log(`Job (${job.name}): ${data} released`);
+      else if (data?.status === 'failed') console.error(`Job failed (${job.name}):`, data.error_code);
+      else if (data?.affected_rows) console.log(`Job (${job.name}): ${data.affected_rows} released`);
     };
     void run();
     const timer = setInterval(run, job.everyMs);

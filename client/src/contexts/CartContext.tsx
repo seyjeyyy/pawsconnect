@@ -12,7 +12,7 @@ type StoredCart = { items: { id: string; products: Product; variant_id?: string;
 const Context = createContext<Cart | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth(); const cache = useQueryClient(); const lock = useRef(false); const [busy, setBusy] = useState(false);
-  const query = useQuery({ queryKey: ['cart', user?.id], enabled: !!user, queryFn: () => api<StoredCart>('/cart') });
+  const query = useQuery({ queryKey: ['cart', user?.id], enabled: !!user, queryFn: ({signal}) => api<StoredCart>('/cart',{signal}) });
   const items: CartItem[] = user ? (query.data?.items || []).map(row => ({ id: row.id, variant_id: row.variant_id, quantity: row.quantity, product: row.product_variants ? { ...row.products, ...row.product_variants, id: row.products.id, name: `${row.products.name} · ${row.product_variants.name}` } : row.products })) : [];
   async function mutate(path: string, method: string, body?: unknown, success?: string) {
     if (!user) { toast.info('Sign in to save a shopping cart to your account.'); return; }

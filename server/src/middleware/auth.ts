@@ -13,6 +13,13 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   if (!match) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue.');
   const { data, error } = await client.auth.getUser(match[1]);
   if (error || !data.user) throw new ApiError(401, 'INVALID_SESSION', 'Your session has expired. Please sign in again.');
+  // getUser validates the JWT before any claim is read. A signed but revoked
+  // session must not survive in either the service-role API or direct RLS reads.
+  let sessionId: string | null = null;
+  try { sessionId = JSON.parse(Buffer.from(match[1].split('.')[1], 'base64url').toString('utf8')).session_id; } catch { /* reject below */ }
+  if (typeof sessionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) throw new ApiError(401,'INVALID_SESSION','Sign in again to establish a current session.');
+  const sessionAllowed=assertDb(await client.rpc('account_session_allowed',{p_user_id:data.user.id,p_session_id:sessionId}));
+  if(!sessionAllowed) throw new ApiError(401,'SESSION_REVOKED','This session no longer has platform access. Sign in again or contact support.');
   const memberships = assertDb<{ roles: { name: string } | { name: string }[] | null }[]>(await client.from('user_roles').select('roles(name)').eq('user_id', data.user.id));
   const roles = memberships.flatMap(row => {
     const role = row.roles;

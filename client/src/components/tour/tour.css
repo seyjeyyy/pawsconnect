@@ -7,9 +7,13 @@
    that can glide and resize between targets. */
 .tour-spotlight { position: absolute; border-radius: 16px; pointer-events: none; box-shadow: 0 0 0 9999px rgb(21 44 73 / 0.62), 0 0 0 3px var(--orange), 0 0 0 9px rgb(249 115 22 / 0.28); animation: tour-fade 0.3s ease both; }
 /* While moving to a new target the box eases across; once settled it tracks scrolling exactly. */
-.tour-gliding .tour-spotlight { transition: top 0.45s cubic-bezier(0.22, 1, 0.36, 1), left 0.45s cubic-bezier(0.22, 1, 0.36, 1), width 0.45s cubic-bezier(0.22, 1, 0.36, 1), height 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+.tour-gliding .tour-spotlight { transition: top 0.26s cubic-bezier(0.22, 1, 0.36, 1), left 0.26s cubic-bezier(0.22, 1, 0.36, 1), width 0.26s cubic-bezier(0.22, 1, 0.36, 1), height 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
 
-.tour-card { position: absolute; width: min(380px, calc(100vw - 32px)); background: var(--white); border-radius: 20px; box-shadow: 0 24px 60px -18px rgb(21 44 73 / 0.55), 0 0 0 1px rgb(21 44 73 / 0.06); overflow: hidden; transition: top 0.45s cubic-bezier(0.22, 1, 0.36, 1), left 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease; }
+.tour-card { position: absolute; width: min(380px, calc(100vw - 32px)); max-height:calc(100dvh - 32px); background: var(--white); border-radius: 20px; box-shadow: 0 24px 60px -18px rgb(21 44 73 / 0.55), 0 0 0 1px rgb(21 44 73 / 0.06); overflow: auto; overscroll-behavior:contain; transition: opacity 0.22s ease, transform 0.22s ease; }
+.tour-gliding .tour-card { transition: top 0.26s ease-out, left 0.26s ease-out, opacity 0.22s ease; }
+.tour-pause { display:block; margin:0 auto 1rem; font-size:.8rem; }
+.tour-hint { background:var(--cream-deep);padding:.5rem .7rem;border-radius:8px;font-size:.8rem!important; }
+.tour button:focus-visible { outline:3px solid var(--orange);outline-offset:3px; }
 .tour-progress { height: 4px; background: var(--cream-deep); }
 .tour-progress span { display: block; height: 100%; background: var(--orange); border-radius: 0 4px 4px 0; transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
 .tour-content { padding: 1.1rem 1.25rem 0.25rem; animation: tour-rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }

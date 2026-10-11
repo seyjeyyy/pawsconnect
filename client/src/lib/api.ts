@@ -6,11 +6,14 @@ export async function apiEnvelope<T>(path:string,options:RequestInit={}):Promise
  const session=supabase ? (await supabase.auth.getSession()).data.session : null;
  const headers=new Headers(options.headers); if(options.body && !(options.body instanceof FormData)) headers.set('Content-Type','application/json');
  if(session) headers.set('Authorization',`Bearer ${session.access_token}`);
- const response=await fetch(`${import.meta.env.VITE_API_URL || '/api'}${path}`,{...options,headers});
+ const timeout=AbortSignal.timeout(20000);
+ let response:Response;
+ try { response=await fetch(`${import.meta.env.VITE_API_URL || '/api'}${path}`,{...options,headers,signal:options.signal?AbortSignal.any([options.signal,timeout]):timeout}); }
+ catch(error){if(timeout.aborted)throw new ApiError('The request timed out. Check your connection and retry.',504,'REQUEST_TIMEOUT');throw error;}
  const body=await response.json().catch(()=>null);
  if(!response.ok) throw new ApiError(body?.error?.message || 'The service is unavailable. Please try again.',response.status,body?.error?.code);
  if(!body || !('data' in body)) throw new ApiError('The service returned an unexpected response.',502);
- if(options.method && !['GET','HEAD'].includes(options.method.toUpperCase())) window.dispatchEvent(new Event('pawsconnect:changed'));
+ if(options.method && !['GET','HEAD'].includes(options.method.toUpperCase()) && !path.startsWith('/operations/tour/')) window.dispatchEvent(new Event('pawsconnect:changed'));
  return body;
 }
 export async function api<T=any>(path:string,options:RequestInit={}):Promise<T>{return (await apiEnvelope<T>(path,options)).data;}

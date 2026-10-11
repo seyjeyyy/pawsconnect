@@ -174,7 +174,7 @@ describe('GeoSmart eligibility (PostGIS)', () => {
 
 describe('privileged RPCs', () => {
   it('are executable by signed-in or anonymous clients only if explicitly allow-listed', async () => {
-    const allowed = ['can_read_report', 'can_read_transport', 'check_service_eligibility', 'has_role', 'is_admin', 'is_staff', 'is_system_admin'];
+    const allowed = ['can_read_report', 'can_read_transport', 'check_service_eligibility', 'current_session_allowed', 'has_role', 'is_admin', 'is_staff', 'is_system_admin'];
     const { rows } = await db.query<{ proname: string }>(`
       select distinct p.proname from pg_proc p
       where p.pronamespace = 'public'::regnamespace

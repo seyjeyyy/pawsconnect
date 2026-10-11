@@ -21,6 +21,16 @@ export const env = z.object({
   OSRM_URL: serviceUrl('https://router.project-osrm.org'),
   RESEND_API_KEY: optional,
   RESEND_FROM: optional,
+  // A separately secured worker polls the operations queue. No worker runs in Vercel.
+  OPERATIONS_WORKER_SECRET: optional,
+  OPERATIONS_WORKER_KINDS: optional,
+  SUPABASE_MANAGEMENT_TOKEN: optional,
+  SUPABASE_PROJECT_REF: optional,
+  RELEASE_COMMIT: optional,
+  RELEASE_DATE: optional,
+  RELEASE_NOTES: optional,
+  VERCEL_ENV: optional,
+  VERCEL_GIT_COMMIT_SHA: optional,
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
 }).parse(process.env);
 export const configured = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);

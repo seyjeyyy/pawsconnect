@@ -5,6 +5,7 @@ import { authenticate, authorize, isStaff, isSystemAdministrator } from '../../m
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
 import { connectedAdminRouter } from './connected.js';
+import { requireMfa, requireRecentMfa } from '../../middleware/mfa.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -50,7 +51,11 @@ export const workspaceAccess: RequestHandler = (req, _res, next) => {
   if (!allowed) throw new ApiError(403, 'FORBIDDEN', 'This action requires an authorized shelter role.');
   next();
 };
-adminRouter.use(authenticate, workspaceAccess);
+adminRouter.use(authenticate, workspaceAccess, requireMfa);
+adminRouter.use((req,res,next) => {
+  if (req.method !== 'GET' && isSystemAdministrator(req.actor!.roles)) return requireRecentMfa(req,res,next);
+  next();
+});
 adminRouter.use(connectedAdminRouter);
 const resources: Record<string, { table: string; search?: string; order: string; select?: string; admin?: boolean; super?: boolean; key?: string }> = {
   security_events: { table: 'security_events', order: 'created_at', super: true },

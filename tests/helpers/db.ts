@@ -34,7 +34,8 @@ const supabaseShim = `
   create function auth.role() returns text language sql stable as
     $$ select coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), 'anon') $$;
   create function auth.jwt() returns jsonb language sql stable as
-    $$ select jsonb_build_object('sub', current_setting('request.jwt.claim.sub', true)) $$;
+    $$ select jsonb_build_object('sub', current_setting('request.jwt.claim.sub', true), 'session_id', current_setting('request.jwt.claim.sub', true), 'aal', current_setting('request.jwt.claim.aal', true)) $$;
+  create table auth.sessions (id uuid primary key, user_id uuid not null references auth.users(id), created_at timestamptz not null default now());
 
   create table storage.buckets (
     id text primary key, name text not null unique, public boolean not null default false,
@@ -74,6 +75,7 @@ export async function applyMigrations(db: PGlite, include: (file: string) => boo
 
 export async function createUser(db: PGlite, email: string, metadata: Record<string, unknown> = {}) {
   const { rows } = await db.query<{ id: string }>('insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id', [email, metadata]);
+  await db.query('insert into auth.sessions(id,user_id) values($1,$1)',[rows[0].id]);
   return rows[0].id;
 }
 
@@ -81,6 +83,9 @@ export async function createUser(db: PGlite, email: string, metadata: Record<str
 export function asUser<T>(db: PGlite, userId: string | null, fn: (tx: Transaction) => Promise<T>) {
   return db.transaction(async tx => {
     await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId ?? '']);
+    // Existing role-policy tests represent fully verified sessions. Dedicated MFA
+    // tests override this claim to aal1 and verify that privileged reads are denied.
+    await tx.query(`select set_config('request.jwt.claim.aal', 'aal2', true)`);
     await tx.exec(`set local role ${userId ? 'authenticated' : 'anon'}`);
     return fn(tx);
   }) as Promise<T>;

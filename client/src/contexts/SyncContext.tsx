@@ -40,7 +40,7 @@ export function SyncStatus() {
   const state = useContext(Context);
   const fetching = useIsFetching();
   const cache = useQueryClient();
-  const health = useQuery({ queryKey: ['health'], queryFn: () => api<{ payment_mode: string }>('/health') });
+  const health = useQuery({ queryKey: ['health'], queryFn: ({signal}) => api<{ payment_mode: string }>('/health',{signal}) });
   const failed = cache.getQueryCache().getAll().some(query => query.isActive() && query.state.status === 'error');
   return <div className="container small muted" role="status">{state}{fetching ? ' · refreshing' : failed ? ' · some records could not be refreshed' : ''} <button className="text-button" onClick={() => void cache.invalidateQueries()}>Refresh</button>{health.data?.payment_mode === 'test' && <span> · Stripe test mode: no real money moves.</span>}</div>;
 }

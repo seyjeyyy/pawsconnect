@@ -1,202 +1,119 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Compass, Heart, HeartHandshake, LayoutDashboard, MapPin, PawPrint, ShieldCheck, ShoppingBag, Sparkles, Truck, UserRound, X, type LucideIcon } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, Compass, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { isOperational } from '../../lib/roles';
+import { api } from '../../lib/api';
+import { tourFor, type Step } from './steps';
 import './tour.css';
 
-type Step = {
-  /** Page the step lives on. The tour navigates there before looking for the target. */
-  route: string;
-  /** CSS selectors tried in order; the first visible match is spotlighted. Omit for a centered card. */
-  targets?: string[];
-  icon: LucideIcon;
-  title: string;
-  body: string;
-  staffOnly?: boolean;
-  customerOnly?: boolean;
-};
+type Progress={step:number;status:'paused'|'completed'|'dismissed';updated_at?:string};
+type Box={top:number;left:number;width:number;height:number};
+const Context=createContext<{active:boolean;start:(resume?:boolean)=>void;progress:Progress|null;dismiss:()=>void;ready:boolean}|null>(null);
+export function useTour(){const value=useContext(Context);if(!value)throw new Error('TourProvider missing');return value;}
+const read=(key:string):Progress|null=>{try{const raw=JSON.parse(localStorage.getItem(key)||'null');return raw&&Number.isInteger(raw.step)&&['paused','completed','dismissed'].includes(raw.status)?raw:null;}catch{return null;}};
+const visible=(element:Element)=>{const r=element.getBoundingClientRect(),s=getComputedStyle(element);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';};
+const findTarget=(step:Step)=>{for(const selector of step.targets||[]){const found=[...document.querySelectorAll(selector)].find(visible);if(found)return found;}return null;};
 
-const steps: Step[] = [
-  { route: '/', icon: PawPrint, title: 'Welcome to PawsConnect', body: 'One place to adopt, shop, rescue, donate and arrange pet transport with Rowena’s Paw Shelter in Bulacan. This short tour shows you where everything is. It takes about a minute.' },
-  { route: '/', targets: ['.desktop-nav', '.mobile-toggle'], icon: Compass, title: 'Everything starts here', body: 'The menu takes you to each service. They work independently: you can shop without adopting, or report a stray without buying anything.' },
-  { route: '/adopt', targets: ['.pet-filters', '.page-intro'], icon: Heart, title: 'Meet adoptable companions', body: 'Search and filter the shelter’s animals by species, size and sex. Open a profile to read about a pet and apply. Every application is reviewed by shelter staff; applying never reserves or adopts a pet on its own.' },
-  { route: '/match', targets: ['.quiz-options', '.quiz-card'], icon: Sparkles, title: 'Find your paw-fect match', body: 'Answer four short steps about your lifestyle and home. Each pet gets a compatibility score calculated from its recorded care profile, with the reasons shown. It is guidance only: people make the adoption decision.' },
-  { route: '/shop', targets: ['.catalog-toolbar', '.page-intro'], icon: ShoppingBag, title: 'Shop pet essentials', body: 'Browse food, toys, beds and more by category, search by name and sort by price. Prices are in Philippine pesos and stock is shown on every item.' },
-  { route: '/shop', targets: ['.cart-icon'], icon: ShieldCheck, title: 'Your bag and secure checkout', body: 'Items you add wait here. At checkout the server confirms prices, stock and the delivery fee for your address, then you pay on Stripe’s secure page. An order is marked paid only after Stripe confirms it.' },
-  { route: '/rescue', targets: ['.location-map', '.location-picker'], icon: MapPin, title: 'Report a stray on the map', body: 'Describe the animal, then click the map or search an address to drop a pin. You can check whether the spot is inside the shelter’s rescue coverage. Staff verify every report before any team is sent.' },
-  { route: '/transport', targets: ['.tabs', '.service-form'], icon: Truck, title: 'Safe journeys for pets', body: 'Request shelter-managed transport within approved Bulacan zones and receive a quotation from staff. Outside coverage, switch to an alternative request and the shelter will assess the arrangement.' },
-  { route: '/donate', targets: ['.donation-amounts', '.service-form'], icon: HeartHandshake, title: 'Support the shelter', body: 'Give a one-time amount or offer supplies in kind. Donations are recorded separately from shop sales, and a monetary gift is confirmed only after the payment is verified.' },
-  { route: '/account', targets: ['.account-sidebar', '.account-gate'], icon: UserRound, customerOnly: true, title: 'Your account, all in one place', body: 'Track orders, payments, adoption applications, rescue reports, transport requests and donations here, and keep your delivery addresses and profile up to date.' },
-  { route: '/admin', targets: ['.account-sidebar'], icon: LayoutDashboard, staffOnly: true, title: 'The shelter workspace', body: 'Shelter personnel work here, and each role sees only its own tools: staff manage the store, adoptions, rescue and transport; veterinarians keep health records; rescue personnel and drivers see the jobs assigned to them.' },
-  { route: '/', icon: PawPrint, title: 'You’re all set', body: 'That’s the whole platform. You can replay this tour any time from “Take the tour” at the top of the page or in the footer.' },
-];
+export function TourProvider({children}:{children:ReactNode}){
+ const {user,roles,rolesLoading,loading}=useAuth(),navigate=useNavigate(),{pathname}=useLocation(),cache=useQueryClient();
+ const rolesKey=[...roles].sort().join(',');
+ const sequence=useMemo(()=>tourFor(rolesKey.split(',')),[rolesKey]);
+ const storageKey=`pawsconnect-tour-${user?.id||'guest'}-${sequence.key}`;
+ const [progress,setProgress]=useState<Progress|null>(null),[ready,setReady]=useState(false),[index,setIndex]=useState<number|null>(null);
+ const [box,setBox]=useState<Box|null>(null),[searching,setSearching]=useState(false),[unavailable,setUnavailable]=useState(false),[gliding,setGliding]=useState(false);
+ const [viewport,setViewport]=useState({width:window.innerWidth,height:window.innerHeight,top:0,left:0});
+ const [cardSize,setCardSize]=useState({width:380,height:300});
+ const card=useRef<HTMLDivElement>(null),returnFocus=useRef<HTMLElement|null>(null),pendingRoute=useRef<string|null>(null),saveQueue=useRef(Promise.resolve());
+ const active=index!==null,step=active?sequence.steps[index]:null;
+ const persist=useCallback((value:Progress)=>{
+  const snapshot={...value,updated_at:new Date().toISOString()};setProgress(snapshot);try{localStorage.setItem(storageKey,JSON.stringify(snapshot));}catch{/* local storage is optional */}
+  if(user)saveQueue.current=saveQueue.current.catch(()=>{}).then(async()=>{await api(`/operations/tour/${sequence.key}`,{method:'PUT',body:JSON.stringify(value)});}).catch(()=>{/* local progress remains usable; no false server success */});
+ },[storageKey,user?.id,sequence.key]);
+ useEffect(()=>{
+  setIndex(null);setBox(null);setProgress(read(storageKey));setReady(!user);let disposed=false;
+  if(user)void api<Progress|null>(`/operations/tour/${sequence.key}`).then(value=>{if(!disposed&&value&&Date.parse(value.updated_at||'')>(Date.parse(read(storageKey)?.updated_at||'')||0))setProgress(value);}).catch(()=>{}).finally(()=>{if(!disposed)setReady(true);});
+  return()=>{disposed=true;};
+ },[storageKey,user?.id,sequence.key]);
+ const close=useCallback(()=>{if(index!==null)persist({step:index,status:'paused'});setIndex(null);setBox(null);pendingRoute.current=null;requestAnimationFrame(()=>{if(returnFocus.current?.isConnected)returnFocus.current.focus({preventScroll:true});else document.querySelector<HTMLElement>('main')?.focus({preventScroll:true});});},[index,persist]);
+ const select=useCallback((next:number)=>{
+  const target=sequence.steps[next];if(!target)return;
+  setSearching(!!target.targets);setUnavailable(false);setGliding(true);setIndex(next);
+  if(pathname!==target.route){pendingRoute.current=target.route;navigate(target.route);}
+  persist({step:next,status:'paused'});
+ },[sequence.steps,pathname,navigate,persist]);
+ const start=useCallback((resume=false)=>{returnFocus.current=document.activeElement as HTMLElement;setBox(null);select(resume&&progress?.status==='paused'?Math.min(progress.step,sequence.steps.length-1):0);},[select,progress,sequence.steps.length]);
+ const go=useCallback((delta:number)=>{
+  if(index===null)return;const next=index+delta;
+  if(next>=sequence.steps.length){persist({step:index,status:'completed'});setIndex(null);setBox(null);requestAnimationFrame(()=>returnFocus.current?.isConnected&&returnFocus.current.focus({preventScroll:true}));}
+  else select(Math.max(0,next));
+ },[index,select,sequence.steps.length,persist]);
+ useEffect(()=>{
+  if(!step)return;
+  if(pathname===step.route){pendingRoute.current=null;return;}
+  if(!pendingRoute.current){close();return;}
+  const timeout=window.setTimeout(()=>{setBox(null);setSearching(false);setUnavailable(true);pendingRoute.current=null;},5000);
+  return()=>window.clearTimeout(timeout);
+ },[pathname,step,close]);
 
-const SEEN_KEY = 'pawsconnect-tour-seen-v1';
-const seen = () => { try { return localStorage.getItem(SEEN_KEY) === '1'; } catch { return true; } };
-const markSeen = () => { try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* storage unavailable: the invitation simply shows again */ } };
-
-type Box = { top: number; left: number; width: number; height: number };
-const TourContext = createContext<{ active: boolean; start: () => void } | null>(null);
-export function useTour() {
-  const context = useContext(TourContext);
-  if (!context) throw new Error('TourProvider is missing');
-  return context;
+ useEffect(()=>{
+  if(!step || pathname!==step.route)return;
+  let frame=0,target:Element|null=null,scrolled=false,settle=0,timeout=0,stopped=false,scrolling=false;
+  let resizing:ResizeObserver|null=null;
+  const view=()=>{const vv=window.visualViewport;setViewport({width:vv?.width||window.innerWidth,height:vv?.height||window.innerHeight,top:vv?.offsetTop||0,left:vv?.offsetLeft||0});};
+  const measure=()=>{
+   frame=0;if(stopped)return;view();
+   if(!step.targets){setBox(null);setSearching(false);return;}
+   const found=findTarget(step);if(!found){if(target){target=null;setBox(null);setUnavailable(true);setSearching(false);}return;}
+   if(target!==found){resizing?.disconnect();target=found;resizing=new ResizeObserver(schedule);resizing.observe(found);}
+   const r=found.getBoundingClientRect(),header=document.querySelector('.site-header')?.getBoundingClientRect();
+   const topLimit=header?Math.max(12,header.bottom+12):12;
+   if(!scrolled){scrolled=true;if(r.top<topLimit || r.bottom>window.innerHeight-16){
+    const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;scrolling=!calm;
+    found.scrollIntoView({behavior:calm?'instant':'smooth',block:'center',inline:'nearest'});
+    settle=window.setTimeout(()=>{scrolling=false;schedule();},calm?0:120);return;
+   }}
+   if(scrolling)return;
+   const top=Math.max(8,r.top-8),left=Math.max(8,r.left-8),right=Math.min(window.innerWidth-8,r.right+8),bottom=Math.min(window.innerHeight-8,r.bottom+8);
+   if(right<=left || bottom<=top){setBox(null);setSearching(false);setUnavailable(true);return;}
+   setBox(previous=>previous&&Math.abs(previous.top-top)<.5&&Math.abs(previous.left-left)<.5&&Math.abs(previous.width-(right-left))<.5&&Math.abs(previous.height-(bottom-top))<.5?previous:{top,left,width:right-left,height:bottom-top});
+   setSearching(false);setUnavailable(false);window.clearTimeout(timeout);
+  };
+  function schedule(){if(!frame)frame=requestAnimationFrame(measure);}
+  const scroll=()=>{setGliding(false);window.clearTimeout(settle);settle=window.setTimeout(()=>{scrolling=false;schedule();},100);if(!scrolling)schedule();};
+  const observer=new MutationObserver(schedule);
+  const page=document.getElementById('tour-page');if(page)observer.observe(page,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','aria-expanded']});
+  const unsubscribe=cache.getQueryCache().subscribe(schedule);
+  window.addEventListener('resize',schedule);window.addEventListener('scroll',scroll,true);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
+  timeout=window.setTimeout(()=>{scrolling=false;if(!target){setBox(null);setSearching(false);setUnavailable(true);}else schedule();},5000);
+  const transition=window.setTimeout(()=>setGliding(false),280);
+  schedule();
+  return()=>{stopped=true;cancelAnimationFrame(frame);clearTimeout(settle);clearTimeout(timeout);clearTimeout(transition);observer.disconnect();resizing?.disconnect();unsubscribe();window.removeEventListener('resize',schedule);window.removeEventListener('scroll',scroll,true);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);};
+ },[step,pathname,cache]);
+ useLayoutEffect(()=>{if(!card.current)return;const observer=new ResizeObserver(()=>{const r=card.current?.getBoundingClientRect();if(r)setCardSize({width:r.width,height:r.height});});observer.observe(card.current);return()=>observer.disconnect();},[active]);
+ useEffect(()=>{
+  if(!active)return;
+  card.current?.querySelector<HTMLElement>('[data-tour-primary]')?.focus({preventScroll:true});
+  const key=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();close();}
+   else if(event.key==='ArrowRight'&&!searching){event.preventDefault();go(1);}
+   else if(event.key==='ArrowLeft'&&!searching){event.preventDefault();go(-1);}
+   else if(event.key==='Tab'&&card.current){const items=[...card.current.querySelectorAll<HTMLElement>('button:not(:disabled),a[href]')];const first=items[0],last=items.at(-1);if(!card.current.contains(document.activeElement)){event.preventDefault();first?.focus();}else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
+  };window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
+ },[active,index,searching,close,go]);
+ const dismiss=()=>persist({step:0,status:'dismissed'});
+ let overlay:ReactNode=null;
+ if(step&&index!==null){
+  const margin=16,gap=16,w=viewport.width,h=viewport.height;
+  let left=(w-cardSize.width)/2,top=(h-cardSize.height)/2;
+  if(box&&!searching){const below=box.top+box.height+gap,above=box.top-gap-cardSize.height;top=below+cardSize.height<=h-margin?below:above>=margin?above:h-cardSize.height-margin;left=box.left+box.width/2-cardSize.width/2;}
+  left=viewport.left+Math.max(margin,Math.min(left,w-cardSize.width-margin));top=viewport.top+Math.max(margin,Math.min(top,h-cardSize.height-margin));
+  const Icon=step.icon;
+  overlay=createPortal(<div className={`tour${gliding?' tour-gliding':''}`}><div className={`tour-backdrop${box?'':' tour-backdrop-dim'}`} aria-hidden="true"/>{box&&<div className="tour-spotlight" aria-hidden="true" style={box}/>}<div ref={card} className="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" style={{left,top,maxHeight:h-32,width:Math.min(380,w-32)}}><div className="tour-progress" role="progressbar" aria-label="Tour progress" aria-valuemin={1} aria-valuemax={sequence.steps.length} aria-valuenow={index+1}><span style={{width:`${(index+1)/sequence.steps.length*100}%`}}/></div><div className="tour-content"><div className="tour-head"><span className="tour-icon"><Icon size={20}/></span><span className="tour-count">Step {index+1} of {sequence.steps.length}</span><button className="tour-close" onClick={close} aria-label="Close the tour"><X size={18}/></button></div><div aria-live="polite"><h2 id="tour-title">{step.title}</h2><p id="tour-body">{step.body}</p>{searching&&<p className="tour-hint" role="status">Finding this part of the page…</p>}{unavailable&&<p className="tour-hint">This feature isn’t visible here. You can continue or pause the tour.</p>}</div></div><div className="tour-actions"><button className="btn btn-secondary" disabled={index===0||searching} onClick={()=>go(-1)}><ArrowLeft size={16}/>Back</button><button className="btn btn-primary" data-tour-primary onClick={()=>go(1)} disabled={searching}>{index===sequence.steps.length-1?'Finish':'Next'}<ArrowRight size={16}/></button></div><button className="tour-pause text-button" onClick={close}>Pause tour</button></div></div>,document.body);
+ }
+ return <Context.Provider value={{active,start,progress,dismiss,ready:ready&&!loading&&!rolesLoading}}><div id="tour-page" inert={active||undefined} style={{display:'contents'}}>{children}</div>{overlay}</Context.Provider>;
 }
-
-const visible = (element: Element) => { const r = element.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-const findTarget = (step: Step) => { for (const selector of step.targets ?? []) { const match = [...document.querySelectorAll(selector)].find(visible); if (match) return match; } return null; };
-const onRoute = (pathname: string, route: string) => route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(route + '/');
-
-export function TourProvider({ children }: { children: ReactNode }) {
-  const { roles } = useAuth();
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const operational = isOperational(roles);
-  const sequence = useMemo(() => steps.filter(step => operational ? !step.customerOnly : !step.staffOnly), [operational]);
-
-  const [index, setIndex] = useState<number | null>(null);
-  const [box, setBox] = useState<Box | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [gliding, setGliding] = useState(false);
-  const [cardSize, setCardSize] = useState({ width: 380, height: 250 });
-  const card = useRef<HTMLDivElement>(null);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const active = index !== null;
-  const step = active ? sequence[Math.min(index, sequence.length - 1)] : null;
-
-  const start = useCallback(() => { returnFocus.current = document.activeElement as HTMLElement | null; setBox(null); setIndex(0); }, []);
-  const close = useCallback(() => { markSeen(); setIndex(null); setBox(null); returnFocus.current?.focus?.({ preventScroll: true }); }, []);
-  const go = useCallback((delta: number) => setIndex(current => {
-    if (current === null) return current;
-    const next = current + delta;
-    if (next >= sequence.length) { markSeen(); returnFocus.current?.focus?.({ preventScroll: true }); return null; }
-    return Math.max(0, next);
-  }), [sequence.length]);
-
-  // Go to the step's page, then follow its target every frame so the spotlight
-  // stays attached through scrolling, resizing and late-loading content.
-  useEffect(() => {
-    if (!step) return;
-    if (!onRoute(pathname, step.route)) { navigate(step.route); return; }
-    if (!step.targets) { setBox(null); setSearching(false); return; }
-    setSearching(true);
-    setGliding(true);
-    let frame = 0, scrolled = false, last = '';
-    const startedAt = performance.now();
-    const settle = window.setTimeout(() => setGliding(false), 900);
-    const track = () => {
-      const target = findTarget(step);
-      if (target) {
-        if (!scrolled) {
-          scrolled = true;
-          const r = target.getBoundingClientRect();
-          // Park the target just under the sticky header, which leaves the most room for the card below it.
-          const top = r.top + window.scrollY - 130;
-          const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          window.scrollTo({ top: Math.max(0, top), behavior: calm ? 'auto' : 'smooth' });
-        }
-        const r = target.getBoundingClientRect();
-        const next = { top: r.top, left: r.left, width: r.width, height: r.height };
-        const key = `${Math.round(next.top)}:${Math.round(next.left)}:${Math.round(next.width)}:${Math.round(next.height)}`;
-        if (key !== last) { last = key; setBox(next); setSearching(false); }
-      } else if (performance.now() - startedAt > 3000 && last !== 'none') {
-        // Target never appeared (for example a section hidden at this screen size): fall back to a centered card.
-        last = 'none'; setBox(null); setSearching(false);
-      }
-      frame = requestAnimationFrame(track);
-    };
-    frame = requestAnimationFrame(track);
-    return () => { cancelAnimationFrame(frame); window.clearTimeout(settle); };
-  }, [step, pathname, navigate]);
-
-  useLayoutEffect(() => {
-    if (!card.current) return;
-    const { width, height } = card.current.getBoundingClientRect();
-    setCardSize(size => Math.abs(size.width - width) > 1 || Math.abs(size.height - height) > 1 ? { width, height } : size);
-  });
-
-  // Keyboard: arrows to move, Escape to leave, Tab stays inside the card.
-  useEffect(() => {
-    if (!active) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); close(); }
-      else if (event.key === 'ArrowRight') { event.preventDefault(); go(1); }
-      else if (event.key === 'ArrowLeft') { event.preventDefault(); go(-1); }
-      else if (event.key === 'Tab' && card.current) {
-        const focusable = [...card.current.querySelectorAll<HTMLElement>('button:not(:disabled)')];
-        if (!focusable.length) return;
-        const first = focusable[0], lastButton = focusable[focusable.length - 1];
-        if (!card.current.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
-        else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); lastButton.focus(); }
-        else if (!event.shiftKey && document.activeElement === lastButton) { event.preventDefault(); first.focus(); }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [active, close, go]);
-
-  useEffect(() => { if (active) card.current?.querySelector<HTMLElement>('[data-tour-primary]')?.focus({ preventScroll: true }); }, [index, active]);
-
-  const value = useMemo(() => ({ active, start }), [active, start]);
-  let overlay: ReactNode = null;
-  if (step && index !== null) {
-    const pad = 8, gap = 16, margin = 16;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const spot = box && { top: box.top - pad, left: box.left - pad, width: box.width + pad * 2, height: box.height + pad * 2 };
-    // Place the card under the target, else above it, else pinned to the bottom of the screen.
-    let top = (vh - cardSize.height) / 2, left = (vw - cardSize.width) / 2;
-    if (spot) {
-      const below = spot.top + spot.height + gap, above = spot.top - gap - cardSize.height;
-      top = below + cardSize.height <= vh - margin ? below : above >= margin ? above : vh - cardSize.height - margin;
-      left = spot.left + spot.width / 2 - cardSize.width / 2;
-    }
-    left = Math.min(Math.max(margin, left), Math.max(margin, vw - cardSize.width - margin));
-    top = Math.min(Math.max(margin, top), Math.max(margin, vh - cardSize.height - margin));
-    const Icon = step.icon;
-    const isLast = index === sequence.length - 1;
-    overlay = <div className={`tour${gliding ? ' tour-gliding' : ''}`}>
-      {/* Blocks clicks on the page while the tour is open, and dims it when nothing is spotlighted. */}
-      <div className={`tour-backdrop${spot ? '' : ' tour-backdrop-dim'}`} aria-hidden="true" />
-      {spot && <div className="tour-spotlight" aria-hidden="true" style={{ top: spot.top, left: spot.left, width: spot.width, height: spot.height }} />}
-      <div ref={card} className="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" style={{ top, left, opacity: searching && !box ? 0 : 1 }}>
-        <div className="tour-progress" role="progressbar" aria-label="Tour progress" aria-valuemin={1} aria-valuemax={sequence.length} aria-valuenow={index + 1}><span style={{ width: `${((index + 1) / sequence.length) * 100}%` }} /></div>
-        <div className="tour-content" key={index}>
-          <div className="tour-head"><span className="tour-icon"><Icon size={20} /></span><span className="tour-count">Step {index + 1} of {sequence.length}</span><button className="tour-close" onClick={close} aria-label="Close the tour"><X size={18} /></button></div>
-          <h2 id="tour-title">{step.title}</h2>
-          <p id="tour-body">{step.body}</p>
-        </div>
-        <div className="tour-actions">
-          {index > 0 ? <button className="btn btn-secondary" onClick={() => go(-1)}><ArrowLeft size={16} />Back</button> : <button className="text-button" onClick={close}>Skip the tour</button>}
-          <button className="btn btn-primary" data-tour-primary onClick={() => go(1)}>{isLast ? 'Finish' : index === 0 ? 'Start the tour' : 'Next'}{!isLast && <ArrowRight size={16} />}</button>
-        </div>
-      </div>
-    </div>;
-  }
-  return <TourContext.Provider value={value}>{children}{overlay}</TourContext.Provider>;
-}
-
-/** Button that starts the tour. Used in the top bar and the footer. */
-export function TourButton({ className = 'tour-link', children = 'Take the tour' }: { className?: string; children?: ReactNode }) {
-  const { start } = useTour();
-  return <button type="button" className={className} onClick={start}><Compass size={14} />{children}</button>;
-}
-
-/** One-time, dismissible invitation shown to first-time visitors on the home page. */
-export function TourInvitation() {
-  const { active, start } = useTour();
-  const { pathname } = useLocation();
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (pathname !== '/' || seen()) { setOpen(false); return; }
-    const timer = window.setTimeout(() => setOpen(true), 1400);
-    return () => window.clearTimeout(timer);
-  }, [pathname]);
-  if (!open || active) return null;
-  const dismiss = () => { markSeen(); setOpen(false); };
-  return <aside className="tour-invite" aria-label="Site tour invitation">
-    <span className="tour-icon"><Compass size={20} /></span>
-    <div><strong>New here?</strong><p>Take a one-minute tour of what you can do.</p><div className="tour-invite-actions"><button className="btn btn-primary" onClick={() => { setOpen(false); start(); }}>Show me around</button><button className="text-button" onClick={dismiss}>No thanks</button></div></div>
-    <button className="tour-close" onClick={dismiss} aria-label="Dismiss the tour invitation"><X size={16} /></button>
-  </aside>;
-}
+export function TourButton({className='tour-link',children='Take the tour'}:{className?:string;children?:ReactNode}){const {start,progress,ready}=useTour();return <button type="button" className={className} onClick={()=>start(progress?.status==='paused')} disabled={!ready}><Compass size={14}/>{progress?.status==='paused'?'Resume tour':children}</button>;}
+export function RestartTourButton(){const {start,ready}=useTour();return <button className="btn btn-secondary" disabled={!ready} onClick={()=>start(false)}><Compass size={16}/>Restart tour</button>;}
+export function TourInvitation(){const {active,start,progress,dismiss,ready}=useTour();const {pathname}=useLocation();if(!ready||progress||active||!['/','/admin/security','/admin/overview','/account'].includes(pathname))return null;return <aside className="tour-invite" aria-label="Site tour invitation"><span className="tour-icon"><Compass size={20}/></span><div><strong>Find your way around</strong><p>A short tour of the tools available to you.</p><div className="tour-invite-actions"><button className="btn btn-primary" onClick={()=>start()}>Show me around</button><button className="text-button" onClick={dismiss}>Not now</button></div></div><button className="tour-close" onClick={dismiss} aria-label="Dismiss the tour invitation"><X size={16}/></button></aside>;}

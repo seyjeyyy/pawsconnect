@@ -16,7 +16,7 @@ export function AuthCallbackPage() {
 }
 
 function Legal({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
-  return <div className="page container"><article className="legal"><span className="eyebrow">{eyebrow}</span><h1 className="page-title">{title}</h1><div className="notice">This is a working draft that describes how the platform is built to behave. It has not been reviewed by legal counsel and is not a statement of legal compliance. Rowena’s Paw Shelter should have it reviewed before public launch.</div>{children}<p className="muted small">Questions about this page? <Link to="/contact">Contact the shelter team</Link>.</p></article></div>;
+  return <div className="page container"><article className="legal"><span className="eyebrow">{eyebrow}</span><h1 className="page-title">{title}</h1><div className="notice">This is a working draft that describes how the platform is built to behave. It has not been reviewed by legal counsel and is not a statement of legal compliance. PawsConnect should have it reviewed before public launch.</div>{children}<p className="muted small">Questions about this page? <Link to="/contact">Contact the shelter team</Link>.</p></article></div>;
 }
 
 export function PrivacyPage() {
