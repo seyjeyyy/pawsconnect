@@ -1,0 +1,4 @@
+.assistant-launcher { position: fixed; right: 20px; bottom: 20px; z-index: 90; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--navy); color: var(--white); box-shadow: 0 10px 26px -10px rgb(30 58 95 / 0.6); transition: background-color 0.15s, transform 0.15s; }
+.assistant-launcher:hover { background: var(--navy-deep); transform: translateY(-1px); }
+@media (max-width: 600px) { .assistant-launcher { right: 14px; bottom: 14px; width: 52px; height: 52px; } }
+@media print { .assistant-launcher { display: none; } }

@@ -5,6 +5,7 @@ import { env, integrations } from './config/env.js';
 import { apiLimiter, authLimiter, formLimiter, mapsLimiter } from './middleware/rateLimit.js';
 import { adoptionRouter } from './modules/adoption/routes.js';
 import { adminRouter } from './modules/analytics/admin.js';
+import { assistantRouter } from './modules/assistant/routes.js';
 import { supportRouter } from './modules/donations/routes.js';
 import { geoRouter } from './modules/geofencing/routes.js';
 import { matchmakingRouter } from './modules/matchmaking/routes.js';
@@ -60,6 +61,7 @@ export function createApp() {
   api.use(rescueRouter);
   api.use(userRouter);
   api.use(paymentRouter);
+  api.use(assistantRouter);
   api.use('/admin', adminRouter);
   api.use(connectedRouter);
   api.use(commerceRouter);

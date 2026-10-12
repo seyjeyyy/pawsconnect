@@ -6,7 +6,7 @@
   "outputDirectory": "client/dist",
   "regions": ["hnd1"],
   "functions": {
-    "api/index.ts": { "maxDuration": 30 }
+    "api/index.ts": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },

@@ -61,6 +61,7 @@ Each is off until its keys are set in `server/.env`; the app reports the feature
 | Stripe (test or live) | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Checkout stops with "payments are not configured". No payment is ever marked successful without a verified webhook. See **Stripe setup** below. |
 | Your own map services | `NOMINATIM_URL`, `OSRM_URL` | Maps need no key. Address search and routing use the public OpenStreetMap services, which are for light use only; set these to a hosted or self-hosted instance before real traffic. |
 | Resend | `RESEND_API_KEY`, `RESEND_FROM` | No transactional email. |
+| AI assistant | `ANTHROPIC_API_KEY` (optional `ASSISTANT_MODEL`, `ASSISTANT_RETENTION_DAYS`) | The chat panel says the assistant is not set up. See [docs/ASSISTANT.md](docs/ASSISTANT.md). |
 
 ### Stripe setup
 

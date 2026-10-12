@@ -5,6 +5,7 @@ import WorkspaceLayout from './components/layout/WorkspaceLayout';
 import { SessionDestination } from './components/SessionDestination';
 import { useAuth } from './contexts/AuthContext';
 import { TourProvider, useTour } from './components/tour/Tour';
+import AssistantLauncher from './components/assistant/AssistantLauncher';
 import Home from './pages/Home';
 import { AuthCallbackPage, NotFoundPage, PrivacyPage, TermsPage } from './pages/Info';
 
@@ -76,6 +77,7 @@ export default function App() {
         </Route>
       </Routes>
     </Suspense>
+    <AssistantLauncher />
     </TourProvider>
   );
 }

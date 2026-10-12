@@ -19,6 +19,10 @@ export const env = z.object({
   // OpenStreetMap services. The defaults are shared public endpoints for light use only.
   NOMINATIM_URL: serviceUrl('https://nominatim.openstreetmap.org'),
   OSRM_URL: serviceUrl('https://router.project-osrm.org'),
+  // The AI assistant. Without a key the assistant reports itself unavailable; nothing else is affected.
+  ANTHROPIC_API_KEY: optional,
+  ASSISTANT_MODEL: z.string().optional().transform(value => value?.trim() || 'claude-opus-5-5'),
+  ASSISTANT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   RESEND_API_KEY: optional,
   RESEND_FROM: optional,
   // A separately secured worker polls the operations queue. No worker runs in Vercel.
