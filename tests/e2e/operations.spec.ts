@@ -143,8 +143,8 @@ test('module-restricted staff see only their assigned animal records and a usabl
  if(await page.getByRole('dialog',{name:'Workspace menu',exact:true}).isVisible()){
   await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Workspace menu',exact:true})).toBeFocused();
  }else{
-  await page.getByRole('button',{name:'Collapse sidebar'}).click();await expect(nav).toBeHidden();
-  await page.getByRole('button',{name:'Expand sidebar'}).click();await expect(nav).toBeVisible();
+  await page.getByRole('button',{name:'Collapse sidebar'}).click();await expect(page.locator('.workspace-shell')).toHaveClass(/sidebar-rail/);await expect(nav.locator('a[href="/admin/pets"]')).toBeVisible();
+  await page.getByRole('button',{name:'Expand sidebar'}).click();await expect(page.locator('.workspace-shell')).not.toHaveClass(/sidebar-rail/);await expect(nav).toBeVisible();
  }
  await page.screenshot({path:`test-results/optimized-workspace-${test.info().project.name}.png`,fullPage:true});
 });
@@ -220,7 +220,7 @@ test('switching accounts replaces the previous workspace and signing out stays s
   await expect(page).toHaveURL('/auth/login');
   await page.reload();await expect(page.getByLabel('Email address')).toBeVisible();
  }
- await page.goto('/');await expect(page.getByRole('heading',{level:1})).toContainText('Connecting loving homes');
+ await page.goto('/');await expect(page.getByRole('heading',{level:1})).toContainText('Give a shelter pet');
 });
 
 test('role lookup must succeed before sign-in chooses a workspace',async({page})=>{

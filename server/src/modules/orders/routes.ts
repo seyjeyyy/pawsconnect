@@ -57,15 +57,60 @@ commerceRouter.post('/orders/quote', async (req, res) => {
     subtotal += amount;
     lines.push({ ...item, name: product.name, unit_price_centavos: Number(purchasable.price_centavos), line_total_centavos: amount });
   }
-  let discount = 0;
-  if (input.coupon_code) {
-    const coupon = assertDb(await db().from('coupons').select('*').eq('code', input.coupon_code.trim().toUpperCase()).eq('is_active', true).maybeSingle());
-    const now = Date.now();
-    if (!coupon || Date.parse(coupon.starts_at) > now || Date.parse(coupon.expires_at) <= now || subtotal < Number(coupon.minimum_subtotal_centavos) || (coupon.max_uses != null && coupon.used_count + coupon.reserved_count >= coupon.max_uses)) throw new ApiError(409, 'INVALID_COUPON', 'This discount code is unavailable for this order.');
-    discount = Math.min(subtotal, coupon.discount_percent ? Math.floor(subtotal * coupon.discount_percent / 100) : Number(coupon.discount_centavos));
-  }
   const delivery = Number(coverage.fee_centavos ?? 0);
-  res.json({ data: { items: lines, subtotal_centavos: subtotal, discount_centavos: discount, delivery_centavos: delivery, total_centavos: subtotal - discount + delivery, currency: 'PHP', reservation: false } });
+  let discount = 0, voucher: { code: string; name: string; applies_to: string; discount_percent: number | null } | null = null;
+  if (input.coupon_code?.trim()) {
+    // The same database routine reserve_order uses, so a quote and the order it becomes cannot disagree.
+    const result = assertDb<{ code: string; name: string; applies_to: string; discount_percent: number | null; discount_centavos: number }>(await db().rpc('evaluate_voucher', { p_user_id: req.actor!.id, p_code: input.coupon_code, p_subtotal_centavos: subtotal, p_delivery_centavos: delivery, p_lock: false }));
+    discount = Number(result.discount_centavos);
+    voucher = { code: result.code, name: result.name, applies_to: result.applies_to, discount_percent: result.discount_percent };
+  }
+  res.json({ data: { items: lines, subtotal_centavos: subtotal, discount_centavos: discount, delivery_centavos: delivery, total_centavos: subtotal - discount + delivery, voucher, currency: 'PHP', reservation: false } });
+});
+// The signed-in customer's vouchers: what they can use now, what they have used, what has lapsed,
+// and how far they are from the next loyalty reward. Whether a voucher fits a particular order is
+// still decided by evaluate_voucher at checkout.
+commerceRouter.get('/vouchers/mine', async (req, res) => {
+  const user = req.actor!.id, now = Date.now();
+  const [couponRows, grantRows, redemptionRows, ruleRows, orderRows] = await Promise.all([
+    db().from('coupons').select('id,code,name,description,kind,applies_to,discount_percent,discount_centavos,max_discount_centavos,minimum_subtotal_centavos,starts_at,expires_at,is_active,max_uses,used_count,reserved_count,per_user_limit'),
+    db().from('voucher_grants').select('coupon_id,granted_at').eq('user_id', user),
+    db().from('voucher_redemptions').select('coupon_id,status,discount_centavos,updated_at,orders(order_number)').eq('user_id', user).in('status', ['reserved', 'redeemed']),
+    db().from('loyalty_rules').select('id,name,metric,threshold,reward_code,created_at').eq('is_active', true),
+    db().from('orders').select('total_centavos,paid_at,status').eq('user_id', user).not('paid_at', 'is', null),
+  ]);
+  type Coupon = { id: string; code: string; name: string | null; description: string | null; kind: string; applies_to: string; discount_percent: number | null; discount_centavos: number | null; max_discount_centavos: number | null; minimum_subtotal_centavos: number; starts_at: string; expires_at: string; is_active: boolean; max_uses: number | null; used_count: number; reserved_count: number; per_user_limit: number };
+  const coupons = assertDb<Coupon[]>(couponRows), grants = assertDb<{ coupon_id: string; granted_at: string }[]>(grantRows);
+  const redemptions = assertDb<{ coupon_id: string; status: string; discount_centavos: number; updated_at: string; orders: { order_number: string } | { order_number: string }[] | null }[]>(redemptionRows);
+  const rules = assertDb<{ id: string; name: string; metric: string; threshold: number; reward_code: string; created_at: string }[]>(ruleRows);
+  const paidOrders = assertDb<{ total_centavos: number; paid_at: string; status: string }[]>(orderRows).filter(order => !['cancelled', 'refunded'].includes(order.status));
+  const hasPaidOrder = assertDb<unknown[]>(orderRows).length > 0;
+  const vouchers = coupons.flatMap(coupon => {
+    const mine = redemptions.filter(row => row.coupon_id === coupon.id), granted = grants.filter(row => row.coupon_id === coupon.id).length;
+    const used = mine.filter(row => row.status === 'redeemed').length, held = mine.filter(row => row.status === 'reserved').length;
+    const allowed = coupon.kind === 'loyalty' ? granted : coupon.per_user_limit;
+    const expired = Date.parse(coupon.expires_at) <= now, started = Date.parse(coupon.starts_at) <= now;
+    const touched = mine.length > 0 || granted > 0;
+    // Vouchers the customer never held and cannot use are not listed at all.
+    if (!touched && (!coupon.is_active || !started || coupon.kind === 'loyalty' || (coupon.kind === 'first_purchase' && hasPaidOrder))) return [];
+    if (!touched && expired && now - Date.parse(coupon.expires_at) > 30 * 86_400_000) return [];
+    const claimed = coupon.max_uses != null && coupon.used_count + coupon.reserved_count >= coupon.max_uses;
+    const remaining = Math.max(allowed - used - held, 0);
+    const status = remaining > 0 && !expired && coupon.is_active && started && !claimed && !(coupon.kind === 'first_purchase' && hasPaidOrder) ? 'available'
+      : held > 0 ? 'held' : used > 0 ? 'used' : expired ? 'expired' : 'unavailable';
+    const order = mine.map(row => Array.isArray(row.orders) ? row.orders[0] : row.orders).find(Boolean);
+    return [{ code: coupon.code, name: coupon.name || coupon.code, description: coupon.description, kind: coupon.kind, applies_to: coupon.applies_to,
+      discount_percent: coupon.discount_percent, discount_centavos: coupon.discount_centavos, max_discount_centavos: coupon.max_discount_centavos,
+      minimum_subtotal_centavos: Number(coupon.minimum_subtotal_centavos), expires_at: coupon.expires_at, status, remaining_uses: status === 'available' ? remaining : 0,
+      used_count: used, last_order_number: order?.order_number ?? null }];
+  });
+  const loyalty = rules.map(rule => {
+    const counted = paidOrders.filter(order => Date.parse(order.paid_at) >= Date.parse(rule.created_at));
+    const progress = rule.metric === 'orders' ? counted.length : counted.reduce((sum, order) => sum + Number(order.total_centavos), 0);
+    const threshold = Number(rule.threshold), reward = coupons.find(coupon => coupon.code === rule.reward_code);
+    return { name: rule.name, metric: rule.metric, threshold, progress: progress % threshold, earned: Math.floor(progress / threshold), reward_name: reward?.name || rule.reward_code };
+  });
+  res.json({ data: { vouchers, loyalty } });
 });
 commerceRouter.post('/orders', async (req, res) => {
   const input = orderInput.parse(req.body);

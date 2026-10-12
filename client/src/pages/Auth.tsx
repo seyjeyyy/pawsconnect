@@ -3,7 +3,8 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowRight, Eye, EyeOff, PawPrint, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, HeartHandshake, PawPrint, ShieldCheck, ShoppingBag } from 'lucide-react';
+
 import { useAuth } from '../contexts/AuthContext';
 import { SessionDestination } from '../components/SessionDestination';
 import './features.css';
@@ -28,5 +29,34 @@ export function AuthPage() {
       else { await auth.signIn(values.email, values.password); }
     } catch (failure) { setError(messageOf(failure)); }
   }
-  return <main className="auth-page"><div className="auth-story"><Link to="/" className="auth-brand"><PawPrint />PawsConnect</Link><div><span className="eyebrow">A LITTLE LOVE GOES A LONG WAY.</span><h1>One account.<br />So many ways<br />to care.</h1><p>Find a companion. Fill a food bowl. Lend a hand.<br />Your next good thing starts here.</p><img src="https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=700&q=85" alt="A friendly golden retriever" /></div><p className="small">Supporting PawsConnect · Bulacan, Philippines</p></div><div className="auth-content"><form className="auth-form" onSubmit={handleSubmit(submit)}><span className="eyebrow">WELCOME TO THE COMMUNITY</span><h1>{registration ? 'Make yourself at home.' : forgot ? 'Forgot your password?' : reset ? 'A fresh start.' : 'Good to see you again.'}</h1><p className="muted">{registration ? 'Create an account to shop, adopt, and make a difference.' : forgot ? 'Enter your email and we’ll send a recovery link.' : reset ? 'Choose a new, secure password for your account.' : 'Sign in and pick up where you left off.'}</p>{!auth.configured && <div className="notice">Account services are awaiting Supabase configuration. Records are unavailable until the connection is restored.</div>}{registration && <label className="field">Full name<input {...register('name')} autoComplete="name" required placeholder="Your full name" /></label>}{!reset && <label className="field">Email address<input {...register('email')} type="email" autoComplete="email" placeholder="you@example.com" />{errors.email && <small className="error">{errors.email.message}</small>}</label>}{!forgot && <label className="field">{reset ? 'New password' : 'Password'}<span className="password-field"><input {...register('password')} aria-label={reset ? 'New password' : 'Password'} type={showPassword ? 'text' : 'password'} autoComplete={registration || reset ? 'new-password' : 'current-password'} placeholder="At least 10 characters" /><button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-pressed={showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{errors.password && <small className="error">{errors.password.message}</small>}</label>}{mode === 'login' && <Link className="auth-forgot" to="/auth/forgot">Forgot password?</Link>}{registration && <p className="small muted">Your account starts with community access. Shelter operational roles are assigned only by an authorized administrator.</p>}<Notice error={error} success={success} /><button className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Please wait…' : registration ? 'Create my account' : forgot ? 'Send reset link' : reset ? 'Update password' : 'Sign in'}<ArrowRight size={17} /></button><p className="auth-switch">{registration ? <>Already part of the community? <Link to="/auth/login">Sign in</Link></> : forgot || reset ? <Link to="/auth/login">Back to sign in</Link> : <>New around here? <Link to="/auth/register">Create an account</Link></>}</p><div className="auth-reassurance"><ShieldCheck size={18} /><span>Secure accounts. Thoughtful care. Happy paws.</span></div></form></div></main>;
+  return <main className="auth-page">
+    <aside className="auth-story">
+      <img src="/images/hero-dog.jpg" alt="" onError={e => { e.currentTarget.style.display = 'none'; }} />
+      <Link to="/welcome" className="auth-brand"><span className="brand-mark"><PawPrint fill="currentColor" size={22} /></span>PawsConnect</Link>
+      <div className="auth-story-copy">
+        <h2>One account for everything at the shelter.</h2>
+        <ul>
+          <li><PawPrint size={18} />Apply to adopt and follow your application</li>
+          <li><ShoppingBag size={18} />Order supplies and track delivery</li>
+          <li><HeartHandshake size={18} />Report a stray, book transport, or donate</li>
+        </ul>
+      </div>
+    </aside>
+    <div className="auth-content">
+      <Link className="back-link" to="/welcome"><ArrowLeft size={16} />Back to website</Link>
+      <form className="auth-form" onSubmit={handleSubmit(submit)} noValidate={false}>
+        {(mode === 'login' || registration) && <nav className="auth-tabs" aria-label="Sign in or create an account"><Link to="/auth/login" className={mode === 'login' ? 'active' : ''} aria-current={mode === 'login' ? 'page' : undefined}>Sign in</Link><Link to="/auth/register" className={registration ? 'active' : ''} aria-current={registration ? 'page' : undefined}>Create account</Link></nav>}
+        <div className="auth-heading"><h1>{registration ? 'Create your account' : forgot ? 'Forgot your password?' : reset ? 'Choose a new password' : 'Welcome back'}</h1><p className="muted">{registration ? 'It takes a minute. You can shop, adopt, report and donate with it.' : forgot ? 'Enter your email and we’ll send a link to reset it.' : reset ? 'Use at least 10 characters.' : 'Sign in to pick up where you left off.'}</p></div>
+        {!auth.configured && <div className="notice">Account services are awaiting Supabase configuration. Records are unavailable until the connection is restored.</div>}
+        {registration && <label className="field">Full name<input {...register('name')} autoComplete="name" required placeholder="Juan Dela Cruz" /></label>}
+        {!reset && <label className="field">Email address<input {...register('email')} type="email" autoComplete="email" placeholder="you@example.com" />{errors.email && <small className="error">{errors.email.message}</small>}</label>}
+        {!forgot && <label className="field"><span className="auth-label-row">{reset ? 'New password' : 'Password'}{mode === 'login' && <Link className="auth-forgot" to="/auth/forgot">Forgot password?</Link>}</span><span className="password-field"><input {...register('password')} aria-label={reset ? 'New password' : 'Password'} type={showPassword ? 'text' : 'password'} autoComplete={registration || reset ? 'new-password' : 'current-password'} placeholder={mode === 'login' ? 'Your password' : 'At least 10 characters'} /><button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-pressed={showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{errors.password && <small className="error">{errors.password.message}</small>}</label>}
+        <Notice error={error} success={success} />
+        <button className="btn btn-primary auth-submit" disabled={isSubmitting}>{isSubmitting ? 'Please wait…' : registration ? 'Create my account' : forgot ? 'Send reset link' : reset ? 'Update password' : 'Sign in'}<ArrowRight size={17} /></button>
+        {registration && <p className="small muted">New accounts are customer accounts. Staff roles are given only by the shelter’s administrator.</p>}
+        {(forgot || reset) && <p className="auth-switch"><Link to="/auth/login">Back to sign in</Link></p>}
+        <p className="auth-reassurance"><ShieldCheck size={16} />Your password is never shown to shelter staff.</p>
+      </form>
+    </div>
+  </main>;
 }

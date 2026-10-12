@@ -57,6 +57,13 @@ Migrations 009 to 013, applied to the live database and verified there.
 - Browser tests start their own preview-mode servers (`tests/helpers/start-e2e.mjs`) and never touch a configured database.
 - `tests/database/upgrade.test.ts` applies new migrations on top of a populated database at the previous version. Extend it when you add a migration that touches existing rows.
 
+### Third pass: app shell, page width, vouchers (2026-10-12)
+
+- **Workspace app shell.** `WorkspaceSidebar` is a fixed left column that collapses to an icon rail (remembered in `localStorage`); below 1024px it is a drawer. The workspace header carries the back button (`components/BackButton.tsx`) and the breadcrumb. `BackButton` goes back in history and falls back to a given route when the page was opened directly; use it instead of a fixed "back" link.
+- **One page width.** `.container` reads `--page-max` and `--page-gutter` (set in `styles.css`; the workspace overrides them in `workspace.css`). Do not hard-code a container width on a page. Card grids use `auto-fill`, so wide windows get more columns.
+- **Vouchers and loyalty (migration 022).** Built on `coupons` and the existing checkout reservation. `evaluate_voucher` is the only place a voucher is checked: the checkout quote calls it without a lock, `reserve_order` with one. A voucher is reserved with the order, redeemed by the `voucher_follow_order` trigger when the order becomes paid, and released when an unpaid order is cancelled or expires. Paid orders keep their voucher redeemed even if later refunded. Loyalty rewards are `voucher_grants`, one per rule per milestone. Staff manage both under Store → Vouchers / Loyalty rewards (`vouchers` and `loyalty` in the admin resources, permission `store.manage`); customers see `GET /api/vouchers/mine` under My vouchers. `tests/database/vouchers.test.ts` covers the rules.
+- The top announcement bar and the tour button in the headers were removed. The tour is still offered once to a new visitor and can be restarted from the footer or Account settings.
+
 ## Roles
 
 Every registered account holds the four community roles (buyer, adopter, donor, community_reporter). Privileged roles are granted only by an administrator through `assign_user_role`.

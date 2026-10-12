@@ -90,3 +90,50 @@
   .record-table .table-actions { justify-content: flex-start; }
   .workspace-shell .feature-toolbar .dashboard-search { max-width: none; flex-basis: 100%; }
 }
+
+/* ---------- App shell: fixed menu on the left, top bar, content across the rest ---------- */
+.workspace-shell { --page-max: 1680px; --page-gutter: clamp(1rem, 2.4vw, 2rem); --sidebar-w: 0px; padding-left: var(--sidebar-w); transition: padding-left .2s ease; }
+.workspace-header { position: sticky; top: 0; z-index: 40; }
+.workspace-header-inner { min-height: 64px; padding-block: .5rem; }
+.workspace-trail { display: flex; align-items: center; gap: .5rem; min-width: 0; margin-right: auto; }
+.workspace-trail .workspace-breadcrumb { min-width: 0; white-space: nowrap; }
+.workspace-trail .workspace-breadcrumb [aria-current] { overflow: hidden; text-overflow: ellipsis; }
+.back-button { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--white); }
+.workspace-meta { justify-content: flex-end; }
+.workspace-shell .admin-page .container { width: min(var(--page-max), 100% - 2 * var(--page-gutter)); }
+.sidebar-container { position: static; }
+.sidebar-fixed { display: none; }
+.sidebar-collapse { display: grid; margin: 0; flex: none; }
+.sidebar-brand { display: flex; align-items: center; gap: .6rem; min-width: 0; color: var(--navy); font-weight: 800; font-size: 1.05rem; line-height: 1.15; }
+.sidebar-brand .brand-mark { width: 36px; height: 36px; border-radius: 11px; flex: none; }
+.sidebar-brand small { display: block; font-size: .72rem; font-weight: 500; color: var(--muted); }
+.nav-rail a { justify-content: center; width: 44px; height: 44px; padding: 0; }
+
+@media (min-width: 1024px) {
+  .workspace-shell:has(.sidebar-container) { --sidebar-w: 264px; }
+  .workspace-shell.sidebar-rail:has(.sidebar-container) { --sidebar-w: 76px; }
+  .workspace-shell:has(.sidebar-container) .workspace-brand { display: none; }
+  .sidebar-fixed { display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; z-index: 45; width: var(--sidebar-w); background: var(--white); border-right: 1px solid var(--line); transition: width .2s ease; }
+  .sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex: none; min-height: 64px; padding: 0 .6rem 0 1rem; border-bottom: 1px solid var(--line); }
+  .workspace-shell .sidebar-fixed .account-sidebar { position: static; display: flex; flex-direction: column; gap: .85rem; flex: 1; max-height: none; padding: 1rem .75rem; border: 0; border-radius: 0; background: transparent; scrollbar-gutter: auto; }
+  .sidebar-fixed .account-sidebar > nav { align-content: start; }
+  .sidebar-fixed .account-sidebar > .btn, .sidebar-fixed .account-sidebar > .text-button { align-self: flex-start; }
+  /* The signed-in person sits at the foot of the menu. */
+  .sidebar-fixed .account-identity { order: 9; margin-top: auto; padding: .9rem .25rem 0; border-bottom: 0; border-top: 1px solid var(--line); }
+  .sidebar-fixed .account-identity > span { width: 38px; height: 38px; }
+  .sidebar-mobile-trigger { display: none; }
+  .dashboard-layout { display: block; }
+  /* Collapsed: icons only. Everything that needs a label waits until the menu is opened again. */
+  .sidebar-rail .sidebar-top { flex-direction: column; justify-content: center; padding: .7rem 0; }
+  .sidebar-rail .sidebar-brand > span:last-child { display: none; }
+  .sidebar-rail .sidebar-fixed .account-sidebar { align-items: center; padding-inline: .5rem; }
+  .sidebar-rail .sidebar-fixed .account-sidebar > :not(nav):not(.account-identity) { display: none; }
+  .sidebar-rail .sidebar-fixed .account-identity { padding-inline: 0; }
+  .sidebar-rail .sidebar-fixed .account-identity > div { display: none; }
+}
+@media (max-width: 1023.98px) {
+  .sidebar-mobile-trigger { display: inline-flex; justify-self: start; }
+  .dashboard-layout { grid-template-columns: minmax(0, 1fr); }
+  .workspace-trail .workspace-breadcrumb > a, .workspace-trail .workspace-breadcrumb > svg { display: none; }
+}
+@media (max-width: 700px) { .workspace-trail { order: -1; margin-right: 0; } .workspace-trail .workspace-breadcrumb { display: none; } }

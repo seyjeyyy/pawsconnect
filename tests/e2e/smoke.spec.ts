@@ -6,12 +6,12 @@ test('homepage renders honest unavailable states and working calls to action', a
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/', {waitUntil:'domcontentloaded'});
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Connecting loving homes');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Give a shelter pet');
   await expect(page.locator('.pet-card')).toHaveCount(0);
   await expect(page.locator('.product-card')).toHaveCount(0);
   await expect(page.getByText('Connect Supabase to enable accounts, saved records, and transactions.').first()).toBeVisible();
 
-  await page.getByRole('link', { name: /Find My Paw-fect Match/ }).first().click();
+  await page.getByRole('link', { name: /Find my match/ }).first().click();
   await expect(page).toHaveURL(/\/match$/);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('paw-fect match');
   expect(errors).toEqual([]);

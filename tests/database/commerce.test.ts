@@ -80,9 +80,9 @@ describe('checkout calculation', () => {
     await db.query(`update public.coupons set starts_at = now() - interval '2 days', expires_at = now() - interval '1 day' where code = 'OLD'`);
     const o = await reserve(ana, anaAddress, [{ product_id: bowl, quantity: 2 }], 'tenoff');
     expect(o).toMatchObject({ subtotal_centavos: 24000, discount_centavos: 2400, total_centavos: 24000 - 2400 + DELIVERY_FEE });
-    await expect(reserve(ben, benAddress, [{ product_id: bowl, quantity: 1 }], 'TENOFF')).rejects.toThrow(/Discount code is invalid/);
-    await expect(reserve(ben, benAddress, [{ product_id: bowl, quantity: 1 }], 'OLD')).rejects.toThrow(/Discount code is invalid/);
-    await expect(reserve(ben, benAddress, [{ product_id: bowl, quantity: 1 }], 'NOSUCH')).rejects.toThrow(/Discount code is invalid/);
+    await expect(reserve(ben, benAddress, [{ product_id: bowl, quantity: 1 }], 'TENOFF')).rejects.toThrow(/fully claimed/);
+    await expect(reserve(ben, benAddress, [{ product_id: bowl, quantity: 1 }], 'OLD')).rejects.toThrow(/voucher has expired/);
+    await expect(reserve(ben, benAddress, [{ product_id: bowl, quantity: 1 }], 'NOSUCH')).rejects.toThrow(/voucher code is not valid/);
   });
 
   it.each([

@@ -6,6 +6,7 @@ import { homePath, isOperational, roleTitle } from '../../lib/roles';
 import { SyncStatus } from '../../contexts/SyncContext';
 import { MaintenanceNotice } from '../MaintenanceNotice';
 import { TourButton } from '../tour/Tour';
+import { BackButton } from '../BackButton';
 import './workspace.css';
 
 const pageName = (pathname: string) => {
@@ -26,8 +27,11 @@ export default function WorkspaceLayout() {
     <a className="skip-link" href="#main">Skip to main content</a>
     <header className="workspace-header"><div className="container workspace-header-inner">
       <Link className="workspace-brand" to={homePath(roles,permissions)}><PawPrint size={26}/><span>PawsConnect<small>{roleTitle(roles)}</small></span></Link>
+      <div className="workspace-trail">
+        <BackButton iconOnly fallback={homePath(roles,permissions)} label="Back to the previous page"/>
+        <nav className="workspace-breadcrumb" aria-label="Breadcrumb"><Link to={homePath(roles,permissions)}>{isOperational(roles)?'Workspace':'My account'}</Link><ChevronRight size={14} aria-hidden="true"/><span aria-current="page">{pageName(pathname)}</span></nav>
+      </div>
       <nav aria-label="Workspace shortcuts" className="workspace-shortcuts">
-        <TourButton/>
         <Link to="/welcome" aria-label="View website" title="View website"><ExternalLink size={17}/><span>View website</span></Link>
         {user ? <>
           <Link to="/account/notifications" aria-label="Notifications" title="Notifications"><Bell size={18}/></Link>
@@ -38,7 +42,6 @@ export default function WorkspaceLayout() {
     </div></header>
     <MaintenanceNotice/>
     <div className="container workspace-meta">
-      <nav className="workspace-breadcrumb" aria-label="Breadcrumb"><Link to={homePath(roles,permissions)}>{isOperational(roles)?'Workspace':'My account'}</Link><ChevronRight size={14} aria-hidden="true"/><span aria-current="page">{pageName(pathname)}</span></nav>
       <SyncStatus/>
     </div>
     {error && <div className="container notice error" role="alert">{error}</div>}

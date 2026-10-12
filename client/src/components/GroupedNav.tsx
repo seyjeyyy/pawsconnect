@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { ChevronDown, type LucideIcon } from 'lucide-react';
+import { useSidebarRail } from './WorkspaceSidebar';
 
 export type NavItem = { key: string; label: string; icon: LucideIcon; to: string; group?: string };
 
@@ -13,6 +14,7 @@ const GROUP_FROM = 7;
  * current page is always open, and the others remember how the user left them.
  */
 export function GroupedNav({ label, items, current }: { label: string; items: NavItem[]; current: string }) {
+  const rail = useSidebarRail();
   const activeGroup = items.find(item => item.key === current)?.group;
   const [open, setOpen] = useState<Set<string>>(() => new Set(activeGroup ? [activeGroup] : []));
   useEffect(() => {
@@ -21,6 +23,10 @@ export function GroupedNav({ label, items, current }: { label: string; items: Na
 
   const link = ({ key, label: text, icon: Icon, to }: NavItem) =>
     <NavLink key={key} to={to} className={key === current ? 'active' : ''} aria-current={key === current ? 'page' : undefined}><Icon size={17} />{text}</NavLink>;
+
+  // Collapsed sidebar: every page as an icon, named by its tooltip and accessible label.
+  if (rail) return <nav aria-label={label} className="nav-rail">{items.map(({ key, label: text, icon: Icon, to }) =>
+    <NavLink key={key} to={to} title={text} aria-label={text} className={key === current ? 'active' : ''} aria-current={key === current ? 'page' : undefined}><Icon size={19} /></NavLink>)}</nav>;
 
   if (items.length < GROUP_FROM) return <nav aria-label={label}>{items.map(link)}</nav>;
 

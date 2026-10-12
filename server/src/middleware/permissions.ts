@@ -9,7 +9,7 @@ export function workspacePermissions(method: string, path: string): string[] {
   if (resource === 'adoptions') return ['adoptions.review'];
   if (resource === 'rescue') return ['rescue.manage','rescue.assigned'];
   if (['transport','alternatives','vehicles','drivers'].includes(resource)) return resource === 'transport' ? ['transport.manage','transport.assigned'] : ['transport.manage'];
-  if (['products','categories','orders','inventory','reviews','shipments'].includes(resource)) return ['store.manage'];
+  if (['products','categories','orders','inventory','reviews','shipments','vouchers','loyalty'].includes(resource)) return ['store.manage'];
   if (['payments','refunds','expenses'].includes(resource)) return ['finance.manage'];
   if (resource === 'donations') return method === 'GET' ? ['donations.view'] : ['donations.manage'];
   if (resource === 'volunteers') return ['volunteers.manage'];

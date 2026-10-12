@@ -86,6 +86,7 @@ const resources: Record<string, { table: string; search?: string; order: string;
   users: { table: 'profiles', search: 'full_name', order: 'created_at', select: '*,user_roles!user_roles_user_id_fkey(role_name),staff_access!staff_access_user_id_fkey(permissions)', super: true },
   expenses: { table: 'expenses', search: 'description', order: 'created_at' }, audit_logs: { table: 'audit_logs', search: 'action', order: 'created_at', super: true },
   contact_messages: { table: 'contact_messages', search: 'name', order: 'created_at' },
+  vouchers: { table: 'coupons', search: 'code', order: 'created_at' }, loyalty: { table: 'loyalty_rules', search: 'name', order: 'created_at' },
   payments: { table: 'payment_transactions', order: 'created_at' }, reviews: { table: 'customer_reviews', order: 'created_at' },
   shipments: { table: 'shipments', order: 'created_at' }, notifications: { table: 'notifications', order: 'created_at', admin: true },
   intake: { table: 'shelter_intakes', order: 'intake_at' },
@@ -100,7 +101,42 @@ const schemas: Record<string, z.AnyZodObject> = {
   vehicles: z.object({ name: z.string().min(2).max(100), plate_number: z.string().min(3).max(30), animal_capacity: z.number().int().min(1).max(100), is_active: z.boolean().default(true), notes: z.string().max(2000).optional() }).strict(),
   drivers: z.object({ user_id: uuid, license_reference: z.string().min(3).max(100), is_active: z.boolean().default(false) }).strict(),
   expenses: z.object({ category: z.string().min(2).max(100), description: z.string().min(5).max(2000), amount_centavos: money.positive(), occurred_at: z.string().date() }).strict(),
+  // The form speaks in "type and value" and whole days; voucherRow turns that into the stored columns.
+  vouchers: z.object({
+    code: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9-]+$/, 'Use letters, numbers and hyphens only.'), name: z.string().trim().min(2).max(80), description: z.string().max(300).optional(),
+    kind: z.enum(['promo', 'first_purchase', 'loyalty']), applies_to: z.enum(['subtotal', 'delivery']),
+    discount_type: z.enum(['percent', 'fixed']), discount_value: z.number().int().positive().max(100_000_000),
+    max_discount_centavos: money.positive().optional(), minimum_subtotal_centavos: money.optional(),
+    starts_at: z.string().date().optional(), expires_at: z.string().date(),
+    max_uses: z.number().int().min(1).max(1_000_000).optional(), per_user_limit: z.number().int().min(1).max(100).optional(), is_active: z.boolean().optional(),
+  }).strict(),
+  loyalty: z.object({ name: z.string().trim().min(2).max(80), metric: z.enum(['orders', 'spend']), threshold: z.number().int().positive().max(100_000_000), reward_code: z.string().trim().min(3).max(30), is_active: z.boolean().optional() }).strict(),
 };
+const DAY = 86_400_000;
+/** Voucher form values as stored columns. Days are Philippine days, and the end day is included. */
+function voucherRow(input: Record<string, unknown>) {
+  const { discount_type: type, discount_value: value, starts_at: starts, expires_at: ends, code, ...row } = input;
+  if ((type === undefined) !== (value === undefined)) throw new ApiError(400, 'VALIDATION_ERROR', 'Give the discount type and its value together.');
+  if (type === 'percent' && Number(value) > 100) throw new ApiError(400, 'VALIDATION_ERROR', 'A percentage discount cannot be more than 100.');
+  if (type !== undefined) Object.assign(row, type === 'percent' ? { discount_percent: value, discount_centavos: null } : { discount_percent: null, discount_centavos: value });
+  if (code !== undefined) row.code = String(code).toUpperCase();
+  if (starts !== undefined) row.starts_at = `${starts}T00:00:00+08:00`;
+  if (ends !== undefined) row.expires_at = new Date(Date.parse(`${ends}T00:00:00+08:00`) + DAY).toISOString();
+  return { ...row, updated_at: new Date().toISOString() };
+}
+/** A stored voucher as the form and table show it. */
+function voucherView(row: Record<string, unknown>) {
+  const philippineDay = (value: unknown, shift = 0) => new Date(Date.parse(String(value)) + 8 * 3_600_000 + shift).toISOString().slice(0, 10);
+  return { ...row, discount_type: row.discount_percent != null ? 'percent' : 'fixed', discount_value: row.discount_percent ?? row.discount_centavos,
+    discount: row.discount_percent != null ? `${row.discount_percent}%` : `PHP ${(Number(row.discount_centavos) / 100).toFixed(2)}`,
+    starts_at: philippineDay(row.starts_at), expires_at: philippineDay(row.expires_at, -1),
+    status: !row.is_active ? 'inactive' : Date.parse(String(row.expires_at)) <= Date.now() ? 'expired' : Date.parse(String(row.starts_at)) > Date.now() ? 'scheduled' : 'active' };
+}
+async function loyaltyReward(code: unknown) {
+  const reward = assertDb(await db().from('coupons').select('code,kind').eq('code', String(code).toUpperCase()).maybeSingle());
+  if (!reward || reward.kind !== 'loyalty') throw new ApiError(400, 'VALIDATION_ERROR', 'The reward must be the code of an existing voucher whose kind is "loyalty".');
+  return reward.code as string;
+}
 async function audit(actor: string, action: string, table: string, id: string) {
   assertDb(await db().from('audit_logs').insert({ actor_id: actor, action, entity_type: table, entity_id: id }));
 }
@@ -308,6 +344,7 @@ adminRouter.get('/:resource', async (req, res) => {
   let data = assertDb<Record<string, unknown>[]>(result);
   // A driver's job list carries the trip, not what the customer is paying.
   if (key === 'transport' && !isStaff(req.actor!.roles)) data = data.map(({ fee_centavos: _fee, paid_at: _paid, estimate_total_centavos: _estimate, ...job }) => job);
+  if (key === 'vouchers') data = data.map(voucherView);
   res.json({ data, meta: { total: result.count, page, limit } });
 });
 adminRouter.post('/:resource', async (req, res) => {
@@ -316,7 +353,8 @@ adminRouter.post('/:resource', async (req, res) => {
   const input = schema.parse(req.body);
   if (key === 'drivers') { input.verified_by = req.actor!.id; assertDb(await db().from('user_roles').select('user_id').eq('user_id', input.user_id).eq('role_name', 'shelter_driver').single()); }
   if (key === 'expenses') input.recorded_by = req.actor!.id;
-  const data = assertDb(await db().from(resource.table).insert(input).select().single());
+  if (key === 'loyalty') input.reward_code = await loyaltyReward(input.reward_code);
+  const data = assertDb(await db().from(resource.table).insert(key === 'vouchers' ? voucherRow(input) : input).select().single());
   await audit(req.actor!.id, `${key}.created`, resource.table, data[resource.key ?? 'id']);
   res.status(201).json({ data });
 });
@@ -330,7 +368,9 @@ adminRouter.patch('/:resource/:id', async (req, res) => {
     if (['reserved','adopted'].includes(current.status)) throw new ApiError(409, 'ADOPTION_WORKFLOW_REQUIRED', 'Pet availability is managed by the adoption workflow for this animal.');
   }
   if (key === 'drivers') { delete input.user_id; input.verified_by = req.actor!.id; }
-  const data = assertDb(await db().from(resource.table).update(input).eq(resource.key ?? 'id', id).select().single());
+  if (key === 'loyalty' && input.reward_code !== undefined) input.reward_code = await loyaltyReward(input.reward_code);
+  if (key === 'loyalty') input.updated_at = new Date().toISOString();
+  const data = assertDb(await db().from(resource.table).update(key === 'vouchers' ? voucherRow(input) : input).eq(resource.key ?? 'id', id).select().single());
   await audit(req.actor!.id, `${key}.updated`, resource.table, id);
   res.json({ data });
 });

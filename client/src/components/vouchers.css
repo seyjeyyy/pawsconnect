@@ -1,0 +1,54 @@
+/* Voucher wallet and the voucher picker at checkout. */
+.loyalty-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.loyalty-card { display: flex; gap: 1rem; align-items: flex-start; }
+.loyalty-card > div { flex: 1; min-width: 0; display: grid; gap: .45rem; }
+.loyalty-card p { color: var(--muted); font-size: .92rem; }
+.loyalty-card small { color: var(--muted); font-size: .78rem; }
+.loyalty-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 12px; background: var(--tint); color: var(--orange-dark); }
+.loyalty-bar { height: 8px; border-radius: 999px; background: var(--cream-deep); overflow: hidden; }
+.loyalty-bar span { display: block; height: 100%; border-radius: inherit; background: var(--orange); transition: width .3s ease; }
+
+.segmented { display: inline-flex; justify-self: start; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.segmented button { display: inline-flex; align-items: center; gap: .45rem; min-height: 38px; padding: 0 .9rem; border-radius: 9px; font-size: .88rem; font-weight: 650; color: var(--muted); }
+.segmented button span { min-width: 1.4rem; padding: 0 .35rem; border-radius: 999px; background: var(--cream-deep); color: var(--brown); font-size: .72rem; text-align: center; }
+.segmented button:hover { color: var(--navy); }
+.segmented button.active { background: var(--navy); color: var(--white); }
+.segmented button.active span { background: rgb(255 255 255 / .18); color: var(--white); }
+
+.voucher-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
+.voucher-card { display: grid; grid-template-columns: 124px minmax(0, 1fr); background: var(--white); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+/* The stub of the ticket: its value, with the perforation between stub and body. */
+.voucher-value { display: grid; align-content: center; justify-items: center; gap: .4rem; padding: 1rem .6rem; background: var(--navy); color: var(--white); text-align: center; border-right: 2px dashed var(--white); }
+.voucher-value svg { color: var(--orange-soft); }
+.voucher-value strong { font-size: 1.15rem; line-height: 1.15; }
+.voucher-body { display: grid; gap: .45rem; padding: 1rem 1.1rem; min-width: 0; }
+.voucher-body h3 { font-size: 1.02rem; }
+.voucher-body p { color: var(--muted); font-size: .88rem; }
+.voucher-body ul { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-size: .8rem; color: var(--muted); }
+.voucher-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .35rem; }
+.voucher-foot .btn { min-height: 40px; padding: .5rem 1rem; font-size: .88rem; }
+.voucher-code { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .65rem; border: 1px dashed var(--line-strong); border-radius: 8px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .82rem; font-weight: 700; letter-spacing: .04em; color: var(--navy); }
+.voucher-code:hover { border-color: var(--orange); }
+.voucher-used .voucher-value, .voucher-held .voucher-value { background: var(--green-dark); }
+.voucher-expired .voucher-value, .voucher-unavailable .voucher-value { background: #8b8580; }
+.voucher-expired .voucher-body, .voucher-unavailable .voucher-body { opacity: .75; }
+
+/* Checkout */
+.voucher-picker { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.voucher-option { display: flex; align-items: center; gap: .75rem; padding: .7rem .85rem; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--white); text-align: left; transition: border-color .15s, background-color .15s; }
+.voucher-option:hover:not(:disabled) { border-color: var(--orange); }
+.voucher-option.selected { border-color: var(--orange); background: var(--tint); }
+.voucher-option > svg { flex: none; color: var(--orange-dark); }
+.voucher-option div { flex: 1; min-width: 0; }
+.voucher-option strong { display: block; color: var(--navy); font-size: .92rem; }
+.voucher-option small { display: block; color: var(--muted); font-size: .78rem; }
+.voucher-entry { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; }
+.voucher-entry .field { flex: 1; min-width: 200px; }
+.summary-discount { color: var(--green-dark); }
+
+@media (max-width: 480px) {
+  .voucher-card { grid-template-columns: 96px minmax(0, 1fr); }
+  .voucher-grid { grid-template-columns: 1fr; }
+  .segmented { display: flex; }
+  .segmented button { flex: 1; justify-content: center; padding: 0 .4rem; }
+}

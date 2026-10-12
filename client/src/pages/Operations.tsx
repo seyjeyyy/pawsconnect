@@ -5,6 +5,7 @@ import { Activity, Archive, ClipboardList, Database, GitBranch, HardDrive, Setti
 import { api, apiEnvelope } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { GroupedNav } from '../components/GroupedNav';
+import { WorkspaceSidebar } from '../components/WorkspaceSidebar';
 import { useConfirmation } from '../components/Confirm';
 
 import { RestartTourButton } from '../components/tour/Tour';
@@ -37,7 +38,7 @@ export default function OperationsPage(){
  if(!user)return <div className="page container card empty-state"><h1>IT Operations</h1><p>Sign in with your system administrator account.</p><Link className="btn btn-primary" to="/auth/login?next=/admin/operations">Sign in</Link></div>;
  if(!roles.includes('super_administrator'))return <Navigate to="/admin" replace/>;
  if(!sections.some(s=>s.key===section))return <Navigate to="/admin/operations" replace/>;
- return <div className="page admin-page"><div className="container dashboard-layout"><aside className="account-sidebar"><div className="admin-identity"><span className="eyebrow">PAWSCONNECT</span><h3>IT Operations</h3><span className="badge">Super administrator</span></div><Link className="text-button" to="/admin/security"><ArrowLeft size={16}/>System & security</Link><GroupedNav label="IT Operations navigation" current={section} items={sections.map(item=>({...item,to:`/admin/operations${item.key==='overview'?'':`/${item.key}`}`}))}/><Link className="text-button" to="/account/settings">Account settings</Link><RestartTourButton/></aside><section className="dashboard-main"><div className="feature-toolbar"><div><span className="eyebrow">PLATFORM OPERATIONS</span><h1>{sections.find(s=>s.key===section)!.label}</h1></div><Link className="btn btn-secondary" to="/welcome">View website<ArrowRight size={16}/></Link></div><OperationsContent section={section}/></section></div></div>;
+ return <div className="page admin-page"><div className="container dashboard-layout"><WorkspaceSidebar><div className="admin-identity"><span className="eyebrow">PAWSCONNECT</span><h3>IT Operations</h3><span className="badge">Super administrator</span></div><Link className="text-button" to="/admin/security"><ArrowLeft size={16}/>System & security</Link><GroupedNav label="IT Operations navigation" current={section} items={sections.map(item=>({...item,to:`/admin/operations${item.key==='overview'?'':`/${item.key}`}`}))}/><Link className="text-button" to="/account/settings">Account settings</Link><RestartTourButton/></WorkspaceSidebar><section className="dashboard-main"><div className="feature-toolbar"><div><span className="eyebrow">PLATFORM OPERATIONS</span><h1>{sections.find(s=>s.key===section)!.label}</h1></div><Link className="btn btn-secondary" to="/welcome">View website<ArrowRight size={16}/></Link></div><OperationsContent section={section}/></section></div></div>;
 }
 function OperationsContent({section}:{section:string}){
  const overview=useQuery({queryKey:['operations','overview'],queryFn:({signal})=>api<Row>('/admin/operations/overview',{signal})});
