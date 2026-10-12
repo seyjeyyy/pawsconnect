@@ -21,7 +21,8 @@ export interface MapProvider {
  * services meant for light use (Nominatim: at most one request per second and
  * an identifying User-Agent; the OSRM demo server offers no uptime guarantee).
  * For production traffic, point NOMINATIM_URL and OSRM_URL at a hosted or
- * self-hosted instance.
+ * self-hosted instance. Address search runs only when someone presses a
+ * button, never as they type, and every answer is cached.
  */
 export class OpenStreetMapProvider implements MapProvider {
   private readonly headers = { 'User-Agent': `PawsConnect/1.0 (${env.CLIENT_URL})`, Accept: 'application/json' };
@@ -93,22 +94,31 @@ export class OpenStreetMapProvider implements MapProvider {
     return place;
   }
 
+  private readonly routes = new Map<string, { at: number; route: RouteResult }>();
+
   async route(origin: Point, destination: Point): Promise<RouteResult> {
-    // OSRM takes longitude,latitude pairs.
-    const path = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
+    // OSRM takes longitude,latitude pairs. Five decimals is about a metre, so the same trip shares one answer.
+    const path = `${origin.longitude.toFixed(5)},${origin.latitude.toFixed(5)};${destination.longitude.toFixed(5)},${destination.latitude.toFixed(5)}`;
+    const cached = this.routes.get(path);
+    // Roads change slowly; the preview and the submission that follows it should agree.
+    if (cached && Date.now() - cached.at < 1_800_000) return cached.route;
     let response: Response;
-    try { response = await fetch(`${env.OSRM_URL}/route/v1/driving/${path}?overview=simplified&geometries=geojson`, { headers: this.headers, signal: AbortSignal.timeout(10000) }); }
+    try { response = await fetch(`${env.OSRM_URL}/route/v1/driving/${path}?overview=full&geometries=geojson`, { headers: this.headers, signal: AbortSignal.timeout(10000) }); }
     catch { throw new ApiError(502, 'ROUTE_UNAVAILABLE', 'The route service is temporarily unavailable.'); }
     const json = await response.json().catch(() => null) as { code?: string; routes?: { distance: number; duration: number; geometry?: { coordinates?: [number, number][] } }[] } | null;
     if (json?.code === 'NoRoute' || (response.ok && !json?.routes?.length)) throw new ApiError(404, 'ROUTE_NOT_FOUND', 'No drivable route was found between these points.');
     const route = json?.routes?.[0];
     if (!response.ok || !route) throw new ApiError(502, 'ROUTE_UNAVAILABLE', 'The route service could not calculate this route.');
-    return {
+    const result: RouteResult = {
       distance_meters: Math.round(route.distance),
       duration_seconds: Math.round(route.duration),
       // [latitude, longitude] pairs, ready for a map polyline.
       geometry: (route.geometry?.coordinates ?? []).map(([longitude, latitude]) => [latitude, longitude]),
     };
+    // Only an answer is kept; a failure is tried again next time.
+    if (this.routes.size > 500) this.routes.clear();
+    this.routes.set(path, { at: Date.now(), route: result });
+    return result;
   }
 }
 

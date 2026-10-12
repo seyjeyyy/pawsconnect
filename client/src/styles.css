@@ -66,6 +66,8 @@ main:focus { outline:none; }
    as hairlines. Adding the two edges together instead of layering them makes the join solid. Each tile layer is its own
    stacking context, so this only ever blends tiles with each other. Unlayered so it sits beside Leaflet's own stylesheet. */
 .leaflet-container .leaflet-tile { mix-blend-mode: plus-lighter; }
+/* Global image resets must not resize map tiles or markers. */
+.leaflet-container img { max-width: none; max-height: none; }
 
 @keyframes shimmer { to { background-position: -200% 0; } }
 
