@@ -239,7 +239,13 @@
   .record-details dt { font-size: 0.82rem; color: var(--muted); }
   .record-details dd { overflow-wrap: anywhere; }
   .record-json { display: block; padding: 0.5rem; background: var(--cream); border-radius: 8px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.76rem; white-space: pre-wrap; }
-  @media (max-width: 560px) { .record-details > div { grid-template-columns: 1fr; gap: 0.15rem; } }
+  .record-details.record-nested { margin-top: 0; }
+  .record-details.record-nested > div { grid-template-columns: 140px minmax(0, 1fr); padding-block: 0.25rem; border-bottom: 0; }
+  .record-list { display: grid; gap: 0.4rem; margin: 0; padding: 0; list-style: none; }
+  .record-list > li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; }
+  .record-list.record-nested > li { display: block; padding: 0.5rem 0.75rem; background: var(--cream); border-radius: 8px; }
+  .record-address { display: grid; gap: 0.1rem; font-style: normal; }
+  @media (max-width: 560px) { .record-details > div, .record-details.record-nested > div { grid-template-columns: 1fr; gap: 0.15rem; } }
 
   .address-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
   .address-card { display: grid; gap: 0.4rem; }

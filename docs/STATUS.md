@@ -1,5 +1,7 @@
 # Build status
 
+Readable record dialogs, 2026-10-12 (local, not committed or deployed). The details and review dialogs printed the stored row: full identifiers, column names, JSON and the provider checkout link. `client/src/components/RecordView.tsx` now renders every one of them (account lists, workspace lists, IT Operations records): names instead of identifiers, money, Manila dates and times, statuses, addresses and order items laid out, empty fields left out, provider references and coordinates for staff only. The names come from `server/src/modules/analytics/references.ts`, which adds a `references` map to each listed row; account names are added for staff and the super administrator only. Payments, refund requests and reviews in the workspace now list who, what for and how much instead of an identifier and a status. Checked by rendering live rows of eleven record types read-only, 4 new unit tests, and the full suite (314 pass). Not clicked through in a signed-in browser.
+
 Database check, 2026-10-12 18:30 Manila (read-only against the live database; nothing was changed there):
 
 - The live schema has every table, column and function the server names, through migration 022 (`npm run check:live`, new). All 106 literal selects the server makes, embeds included, run without error against it.

@@ -9,6 +9,7 @@ import { workspacePermissions } from '../../middleware/permissions.js';
 import { emailOwner, pesos, readable } from '../../integrations/email.js';
 import { forgetTransportSettings } from '../transport/service.js';
 import { transportDetail } from '../transport/detail.js';
+import { withReferences } from './references.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -345,6 +346,8 @@ adminRouter.get('/:resource', async (req, res) => {
   // A driver's job list carries the trip, not what the customer is paying.
   if (key === 'transport' && !isStaff(req.actor!.roles)) data = data.map(({ fee_centavos: _fee, paid_at: _paid, estimate_total_centavos: _estimate, ...job }) => job);
   if (key === 'vouchers') data = data.map(voucherView);
+  // Names in place of identifiers. Field roles get record names but no account names.
+  data = await withReferences(data, { people: isStaff(req.actor!.roles) || isSystemAdministrator(req.actor!.roles) });
   res.json({ data, meta: { total: result.count, page, limit } });
 });
 adminRouter.post('/:resource', async (req, res) => {

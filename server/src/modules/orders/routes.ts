@@ -5,6 +5,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { uuid } from '../../utils/validation.js';
 import { eligibility } from '../geofencing/service.js';
+import { withReferences } from '../analytics/references.js';
 
 export const orderInput = z.object({ items: z.array(z.object({ product_id: uuid, variant_id: uuid.optional(), quantity: z.number().int().min(1).max(99) }).strict()).min(1).max(50), address_id: uuid, coupon_code: z.string().max(50).optional().nullable() }).strict();
 export const commerceRouter = Router();
@@ -121,7 +122,8 @@ commerceRouter.get('/orders', async (req, res) => {
   res.json({ data: assertDb(await db().from('orders').select('*,order_items(*)').eq('user_id', req.actor!.id).order('created_at', { ascending: false }).limit(100)) });
 });
 commerceRouter.get('/orders/:id', async (req, res) => {
-  res.json({ data: assertDb(await db().from('orders').select('*,order_items(*),shipments(*)').eq('id', uuid.parse(req.params.id)).eq('user_id', req.actor!.id).single()) });
+  const order = assertDb<Record<string, unknown>>(await db().from('orders').select('*,order_items(*),shipments(*)').eq('id', uuid.parse(req.params.id)).eq('user_id', req.actor!.id).single());
+  res.json({ data: (await withReferences([order], { people: false }))[0] });
 });
 commerceRouter.post('/orders/:id/cancel', async (req, res) => {
   const data = assertDb(await db().rpc('transition_order', { p_actor_id: req.actor!.id, p_order_id: uuid.parse(req.params.id), p_status: 'cancelled' }));

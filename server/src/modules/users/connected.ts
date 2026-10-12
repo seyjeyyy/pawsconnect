@@ -5,6 +5,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { pagination, safeSearch, uuid } from '../../utils/validation.js';
 import { emailUser } from '../../integrations/email.js';
+import { withReferences } from '../analytics/references.js';
 
 export const connectedRouter = Router();
 connectedRouter.use(authenticate);
@@ -35,7 +36,7 @@ connectedRouter.get('/account/records/:kind', async (req, res) => {
   const kind=String(req.params.kind);
   const stableKey=kind==='favorites'?'pet_id':kind==='wishlist'?'product_id':'id';
   const result = await query.order('created_at', { ascending: false }).order(stableKey,{ascending:false}).range((page - 1) * limit, page * limit - 1);
-  res.json({ data: assertDb(result), meta: { total: result.count, page, limit } });
+  res.json({ data: await withReferences(assertDb<Record<string, unknown>[]>(result as never), { people: false }), meta: { total: result.count, page, limit } });
 });
 connectedRouter.post('/favorite-pets', async (req, res) => {
   const { pet_id } = z.object({ pet_id: uuid }).strict().parse(req.body);
