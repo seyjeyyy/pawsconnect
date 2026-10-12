@@ -42,6 +42,7 @@ export default function WorkspaceLayout() {
     </div></header>
     <MaintenanceNotice/>
     <div className="container workspace-meta">
+      <TourButton/>
       <SyncStatus/>
     </div>
     {error && <div className="container notice error" role="alert">{error}</div>}

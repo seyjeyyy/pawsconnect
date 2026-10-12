@@ -100,6 +100,9 @@
 .workspace-trail .workspace-breadcrumb [aria-current] { overflow: hidden; text-overflow: ellipsis; }
 .back-button { width: 40px; height: 40px; border: 1px solid var(--line); background: var(--white); }
 .workspace-meta { justify-content: flex-end; }
+.workspace-meta .tour-link { min-height: 32px; padding: .2rem .8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--white); color: var(--navy); font-size: .78rem; }
+.workspace-meta .tour-link:hover:not(:disabled) { border-color: var(--navy); }
+.workspace-meta .tour-link:disabled { opacity: .6; }
 .workspace-shell .admin-page .container { width: min(var(--page-max), 100% - 2 * var(--page-gutter)); }
 .sidebar-container { position: static; }
 .sidebar-fixed { display: none; }

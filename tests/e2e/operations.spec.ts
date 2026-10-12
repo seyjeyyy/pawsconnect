@@ -234,3 +234,16 @@ test('role lookup must succeed before sign-in chooses a workspace',async({page})
  await page.getByRole('button',{name:'Retry',exact:true}).click();
  await expect(page).toHaveURL('/admin/security');
 });
+test('every workspace page has a tour button that starts the tour',async({page})=>{
+ await fixture(page);
+ for(const path of ['/admin/security','/admin/operations','/account/profile']){
+  await page.goto(path);await expect(page.locator('.dashboard-main h1')).toBeVisible();
+  await expect(page.locator('.workspace-meta').getByRole('button',{name:'Take the tour'}),path).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth),path).toBeLessThanOrEqual(0);
+ }
+ await page.locator('.workspace-meta').getByRole('button',{name:'Take the tour'}).click();
+ await expect(page.getByRole('dialog').getByRole('progressbar')).toHaveAttribute('aria-valuenow','1');
+ await page.screenshot({path:'test-results/workspace-tour-'+test.info().project.name+'.png'});
+ await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page.locator('.workspace-meta').getByRole('button',{name:'Resume tour'})).toBeVisible();
+});
