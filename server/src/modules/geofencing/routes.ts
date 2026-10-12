@@ -14,11 +14,10 @@ geoRouter.post('/geofencing/rescue-coverage', async (req, res) => {
   res.json({ data: await eligibility('rescue', input.latitude, input.longitude) });
 });
 geoRouter.post('/geofencing/transport-coverage', async (req, res) => {
-  // The pickup is the official shelter; an origin sent by the browser is not used.
+  // Shelter transport starts at the official shelter, so the destination alone decides coverage. An origin sent by the browser is not used.
   const { destination } = z.object({ origin: z.unknown().optional(), destination: point }).parse(req.body);
-  const origin = await shelterLocation();
-  const [pickup, dropoff] = await Promise.all([eligibility('transport', origin.latitude, origin.longitude), eligibility('transport', destination.latitude, destination.longitude)]);
-  res.json({ data: { eligible: pickup.eligible && dropoff.eligible, pickup, dropoff, alternative_available: !pickup.eligible || !dropoff.eligible } });
+  const dropoff = await eligibility('transport', destination.latitude, destination.longitude);
+  res.json({ data: { eligible: dropoff.eligible, dropoff, alternative_available: !dropoff.eligible } });
 });
 geoRouter.get('/maps/geocode', async (req, res) => {
   const { address } = z.object({ address: z.string().min(5).max(500) }).parse(req.query);

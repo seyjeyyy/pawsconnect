@@ -180,11 +180,12 @@ A ten-step change so that every shelter transport request starts at the shelter 
 
 - **Step 4, routing and geocoding.** The owner chose to stay on the public OpenStreetMap services (OSRM for routes, Nominatim for addresses) rather than OpenRouteService; `OSRM_URL` and `NOMINATIM_URL` can point elsewhere without a code change. Road distance is the routing service's own figure, never straight-line, and a failure is reported as a failure. Route answers are cached for 30 minutes, address searches and reverse lookups for a day. Address search runs only on the "Find address" button. Leaflet is its own chunk, loaded when a map is about to be shown, including for the older picker used by the Rescue, Checkout and Alternative request forms (`LocationPicker.tsx` is now a lazy wrapper around `LocationPickerMap.tsx`). Every map re-measures itself when its box changes, which fixes maps that drew grey.
 
-Still to do: coverage, estimate, submit, staff and driver views (steps 5–10). The Alternative request tab still uses the older picker with coordinate inputs.
+- **Step 5, coverage (migration 021, NOT yet applied to the live database; it is still being added to through step 9).** A booking that starts at the official shelter (`shelter_location_id` set) is classified by its destination only: the transport service zones first, then the optional `transport_settings.max_distance_km`. `server/src/modules/transport/service.ts` works this out for both the preview and the submission. A destination outside the area, or in a paused zone, is refused by the API (409 `OUTSIDE_COVERAGE` / `COVERAGE_PAUSED`) and again by the database trigger; the form disables Submit and offers "Send an Alternative request", which opens that tab with the destination filled in. A zone marked for manual review still accepts the request. Bookings made before 021, with a customer-typed pickup, keep the both-ends rule. Nothing is ever auto-confirmed: every request starts as `submitted` and only staff move it on. Migration 021 also adds the booking columns for step 9 (reference `PT-…`, pickup snapshot, destination parts, contact, pet, route distance and time, estimate) and an empty `transport_settings` row.
 
-Two things that hold until step 5 and real zones exist:
+Still to do: estimate, submit, staff and driver views (steps 6–10). The Alternative request tab still uses the older picker with coordinate inputs.
 
-- The database still classifies coverage from both ends, and the shelter (15.017163, 120.948071) is not inside any transport zone, so every new shelter transport request is saved as outside coverage and cannot be quoted or scheduled.
+One thing that holds until real zones exist:
+
 - `check_service_eligibility` deliberately ignores zones whose name or source starts with "demo" (migration 010), and the three demo zones are the only zones. The live site therefore has no transport, rescue or delivery coverage anywhere until real zones are entered.
 
 ## Not built

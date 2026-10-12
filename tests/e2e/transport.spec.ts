@@ -4,7 +4,8 @@ import { expect, test, type Page } from '@playwright/test';
 // sign-in session are stand-ins. These tests cover the shelter transport form itself.
 const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const shelter = { name: 'PawsConnect Animal Shelter', latitude: 15.017163, longitude: 120.948071, google_maps_url: 'https://maps.app.goo.gl/e6hDczktzrXMntQr9', formatted_address: null };
-async function fixture(page: Page, options: { signedIn?: boolean; routeFailures?: number } = {}) {
+const outside = 'This location is outside our delivery area. You can send an Alternative request and our staff will review it.';
+async function fixture(page: Page, options: { signedIn?: boolean; routeFailures?: number; coverage?: string } = {}) {
   const previews: any[] = [], bookings: any[] = []; let failures = options.routeFailures ?? 0;
   await page.route('**/tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: tile }));
   await page.route('**/src/lib/supabase.ts', route => route.fulfill({ contentType: 'application/javascript', body: `
@@ -22,9 +23,9 @@ async function fixture(page: Page, options: { signedIn?: boolean; routeFailures?
     else if (path === '/transport/preview') {
       previews.push(request.postDataJSON());
       if (failures-- > 0) return route.fulfill({ status: 502, json: { error: { code: 'ROUTE_UNAVAILABLE', message: 'We couldn’t calculate the route. Please try again.' } } });
-      data = { origin: shelter, route: { distance_km: 18.4, duration_minutes: 37, geometry: [[15.017163, 120.948071], [14.9, 120.9]] }, coverage: { status: 'within_coverage' }, estimate: null };
+      data = { origin: shelter, route: { distance_km: 18.4, duration_minutes: 37, geometry: [[15.017163, 120.948071], [14.9, 120.9]] }, coverage: { status: options.coverage ?? 'within_coverage', message: options.coverage === 'outside_coverage' ? outside : null }, estimate: null };
     }
-    else if (path === '/transport/requests') { bookings.push(request.postDataJSON()); await new Promise(resolve => setTimeout(resolve, 300)); data = { id: 'abcd1234-0000-4000-8000-000000000000', status: 'submitted' }; }
+    else if (path === '/transport/requests') { bookings.push(request.postDataJSON()); await new Promise(resolve => setTimeout(resolve, 300)); data = { id: 'abcd1234-0000-4000-8000-000000000000', reference: 'PT-TEST000001', status: 'submitted' }; }
     else if (path === '/assistant/bootstrap') data = { enabled: false };
     else if (path === '/cart') data = { items: [] };
     else if (path === '/health') data = { status: 'ok', payment_mode: 'unavailable' };
@@ -152,10 +153,35 @@ test('submitting twice creates one booking, with no pickup sent from the browser
   await form(page).getByLabel(/pet transport policy/).check();
   await submit.dblclick();
   await expect(page.getByRole('heading', { name: 'Request received' })).toBeVisible();
-  await expect(page.getByText('Reference ABCD1234')).toBeVisible();
+  await expect(page.getByText('Reference PT-TEST000001')).toBeVisible();
   await expect(page.getByRole('link', { name: 'View my transport requests' })).toHaveAttribute('href', '/account/transport');
   expect(bookings).toHaveLength(1);
   expect(bookings[0]).toMatchObject({ pet_name: 'Mingming', pet_species: 'dog', pet_weight_kg: 4, preferred_schedule: '2030-01-15T02:00:00.000Z', dropoff_street: '12 Example Street', dropoff_city: 'Example Town', dropoff_latitude: 14.9, dropoff_longitude: 120.9, contact_name: 'Alice Fixture', contact_phone: '+639171234567', destination_confirmed: true, policy_accepted: true });
   expect(Object.keys(bookings[0]).filter(key => /pickup|fee|price|distance|coverage|status/.test(key))).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('a destination outside the delivery area cannot be submitted and carries over to an Alternative request', async ({ page }) => {
+  const { bookings } = await fixture(page, { coverage: 'outside_coverage' });
+  await page.goto('/transport');
+  await form(page).getByLabel('House no., building or landmark').fill('Blue gate');
+  await searchForAddress(page);
+  await expect(form(page).getByRole('alert').first()).toContainText(outside);
+  await expect(form(page).getByText('Outside our delivery area', { exact: true })).toBeVisible();
+  // Ticking everything still does not allow it.
+  await form(page).getByLabel(/I confirm the destination/).check();
+  await form(page).getByLabel(/pet transport policy/).check();
+  await expect(form(page).getByRole('button', { name: 'Submit transport request' })).toBeDisabled();
+  expect(bookings).toHaveLength(0);
+
+  await form(page).getByRole('button', { name: 'Send an Alternative request' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Alternative transport request' })).toBeVisible();
+  await expect(page.getByText('Your destination has been carried over')).toBeVisible();
+  const carried = page.locator('fieldset.location-picker', { hasText: 'Destination' });
+  await expect(carried.getByLabel('Street address or landmark')).toHaveValue('Blue gate, 12 Example Street');
+  await expect(carried.getByLabel('Barangay')).toHaveValue('Example Barangay');
+  await expect(carried.getByLabel('City / municipality')).toHaveValue('Example Town');
+  await expect(carried.getByLabel('Latitude')).toHaveValue('14.9');
+  // The pickup on that tab is still for the customer to give.
+  await expect(page.locator('fieldset.location-picker', { hasText: 'Pickup location' }).getByLabel('Street address or landmark')).toHaveValue('');
 });

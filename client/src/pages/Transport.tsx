@@ -13,6 +13,8 @@ import './transport/transport.css';
 export function TransportPage() {
   const { user, loading } = useAuth();
   const [alternative, setAlternative] = useState(false);
+  // A destination carried over from the Shelter transport tab when it turned out to be outside the delivery area.
+  const [carried, setCarried] = useState<LocationValue | null>(null);
   const applications = useQuery({ queryKey: ['my-applications', user?.id], queryFn: () => api<TransportApplication[]>('/adoption-applications/mine'), enabled: !!user });
   return <div className="page"><div className="container">
     <ServiceHeading eyebrow="SAFE JOURNEYS. HAPPY ARRIVALS." title="A little help getting there." description="Request careful, shelter-managed transportation for your pet within approved Bulacan service areas." />
@@ -26,7 +28,7 @@ export function TransportPage() {
       </div>
       : <>
         <div className="feature-toolbar transport-toolbar"><div className="tabs"><button type="button" className={!alternative ? 'active' : ''} onClick={() => setAlternative(false)}>Shelter transport</button><button type="button" className={alternative ? 'active' : ''} onClick={() => setAlternative(true)}>Alternative request</button></div><Link className="text-button" to="/account/transport">Track my transport requests <ArrowRight size={15} /></Link></div>
-        {alternative ? <AlternativeRequest applications={applications.data ?? []} /> : <ShelterTransportForm applications={applications.data ?? []} />}
+        {alternative ? <AlternativeRequest applications={applications.data ?? []} destination={carried} /> : <ShelterTransportForm applications={applications.data ?? []} onAlternative={destination => { setCarried(destination); setAlternative(true); window.scrollTo({ top: 0 }); }} />}
       </>}
     <div className="transport-notes">
       <div className="card sidebar-tint"><div className="feature-icon"><Truck /></div><h3>Handled with care, every step of the way.</h3><p>Live pets travel through shelter-managed arrangements with appropriate handling, never through an ordinary parcel booking.</p></div>
@@ -36,8 +38,8 @@ export function TransportPage() {
 }
 
 /** A request for an arrangement other than shelter-operated transport. Staff assess each one; nothing is automatic. */
-function AlternativeRequest({ applications }: { applications: TransportApplication[] }) {
-  const [pickup, setPickup] = useState<LocationValue>(emptyLocation); const [dropoff, setDropoff] = useState<LocationValue>(emptyLocation);
+function AlternativeRequest({ applications, destination }: { applications: TransportApplication[]; destination: LocationValue | null }) {
+  const [pickup, setPickup] = useState<LocationValue>(emptyLocation); const [dropoff, setDropoff] = useState<LocationValue>(() => destination ?? emptyLocation());
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState('');
   const [route, setRoute] = useState<{ distance_meters?: number; duration_seconds?: number } | null>(null);
   async function previewRoute() { setError(''); try { setRoute(await api('/maps/route', post({ origin: { latitude: pickup.latitude, longitude: pickup.longitude }, destination: { latitude: dropoff.latitude, longitude: dropoff.longitude } }))); } catch (failure) { setError(messageOf(failure)); } }
@@ -56,6 +58,7 @@ function AlternativeRequest({ applications }: { applications: TransportApplicati
   return <form className="card service-form" onSubmit={submit}>
     <div className="feature-toolbar"><h2>Alternative transport request</h2><Truck size={25} /></div>
     <div className="notice">Outside shelter coverage or need another arrangement? Staff can review your request. No carrier acceptance or availability is guaranteed.</div>
+    {destination && <div className="notice" role="status">Your destination has been carried over from the shelter transport form. Please add the pickup and the remaining details.</div>}
     <label className="field">How would you like to arrange transport?<select name="arrangement_type" required><option value="self_pickup">I will pick up the pet myself</option><option value="customer_arranged">I will arrange a qualified pet transporter</option><option value="shelter_assisted">I would like the shelter to help coordinate</option></select></label>
     <div className="form-grid"><label className="field">Transporter name (if arranged)<input name="transporter_name" maxLength={150} /></label><label className="field">Transporter contact (if arranged)<input name="transporter_contact" maxLength={150} /></label></div>
     <p className="small muted">An animal is released only to a person or transporter the shelter has verified.</p>

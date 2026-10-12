@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ExternalLink, LocateFixed, MapPin, RefreshCw, Search } from 'lucide-react';
-import { api } from '../../lib/api';
+import type { LocationValue } from '../../components/location';
+import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useShelterLocation } from '../../components/ShelterPickup';
 import './transport.css';
@@ -13,7 +14,7 @@ export type TransportApplication = { id: string; status: string; pets?: { name?:
 type Destination = { landmark: string; street: string; barangay: string; city: string; province: string; latitude?: number; longitude?: number };
 type Place = { address: string; street: string; barangay: string; city: string; province: string };
 type SearchResult = { address: string; latitude: number; longitude: number; place_id: string };
-type Preview = { route: { distance_km: number; duration_minutes: number; geometry: [number, number][] }; coverage: { status: string }; estimate: { total_centavos: number } | null };
+type Preview = { route: { distance_km: number; duration_minutes: number; geometry: [number, number][] }; coverage: { status: string; reason?: string; max_distance_km?: number; message: string | null }; estimate: { total_centavos: number } | null };
 type PreviewState = { state: 'idle' } | { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: Preview };
 
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
@@ -27,7 +28,7 @@ const travelTime = (minutes: number) => minutes < 60 ? `${minutes} min` : `${Mat
 const addressLine = (place: Destination) => [place.landmark, place.street, place.barangay, place.city, place.province].map(part => part.trim()).filter(Boolean).join(', ');
 const MapFrame = ({ size, children }: { size: 'small' | 'medium'; children: React.ReactNode }) => <Suspense fallback={<div className={`transport-map-loading transport-map-${size}`} role="status">Loading the map…</div>}>{children}</Suspense>;
 
-export function ShelterTransportForm({ applications }: { applications: TransportApplication[] }) {
+export function ShelterTransportForm({ applications, onAlternative }: { applications: TransportApplication[]; onAlternative: (destination: LocationValue) => void }) {
   const { profile } = useAuth();
   const shelter = useShelterLocation();
   const [adoptionId, setAdoptionId] = useState('');
@@ -43,6 +44,8 @@ export function ShelterTransportForm({ applications }: { applications: Transport
   const [confirmed, setConfirmed] = useState(false); const [policy, setPolicy] = useState(false);
   const [submitting, setSubmitting] = useState(false); const [error, setError] = useState('');
   const [done, setDone] = useState<{ reference: string } | null>(null);
+  // Set when the server refuses a destination the preview had not already ruled out.
+  const [refused, setRefused] = useState('');
   const sending = useRef(false);
   const pinLookup = useRef<{ timer?: ReturnType<typeof setTimeout>; controller?: AbortController }>({});
   const top = useRef<HTMLDivElement>(null);
@@ -64,7 +67,7 @@ export function ShelterTransportForm({ applications }: { applications: Transport
   /** Every way of choosing the destination ends here: one pin, and the confirmation is asked for again. */
   function movePin(point: { latitude: number; longitude: number }, place?: Place | null) {
     setDestination(current => ({ ...current, ...point, ...(place ? { landmark: '', street: place.street, barangay: place.barangay, city: place.city || current.city, province: place.province || current.province } : {}) }));
-    setConfirmed(false); setResults(null); setNearby(null);
+    setConfirmed(false); setResults(null); setNearby(null); setRefused('');
   }
   const typed = (key: keyof Destination, value: string) => { setDestination(current => ({ ...current, [key]: value })); setConfirmed(false); };
 
@@ -122,10 +125,14 @@ export function ShelterTransportForm({ applications }: { applications: Transport
   }, [destination.latitude, destination.longitude, attempt]);
 
   const ready = preview.state === 'ready' ? preview.data : null;
+  // Outside the delivery area, or paused there: shelter transport cannot be booked, and the Alternative request is offered instead.
+  const blocked = ready?.coverage.message || refused;
+  const toAlternative = () => onAlternative({ address: [destination.landmark, destination.street].map(part => part.trim()).filter(Boolean).join(', '), barangay: destination.barangay.trim(), city: destination.city.trim(), province: destination.province.trim(), latitude: destination.latitude, longitude: destination.longitude });
   const phoneValid = /^9\d{9}$/.test(contact.phone);
   const missing = [
     !hasPin && 'place the destination pin',
     hasPin && preview.state !== 'ready' && 'wait for the route to be calculated',
+    Boolean(blocked) && 'choose a destination inside our delivery area',
     !confirmed && 'confirm the destination',
     !policy && 'accept the transport policy',
   ].filter(Boolean) as string[];
@@ -136,7 +143,7 @@ export function ShelterTransportForm({ applications }: { applications: Transport
     if (!pet.schedule || Date.parse(manilaToIso(pet.schedule)) <= Date.now()) { setError('Choose a date and time in the future.'); return; }
     sending.current = true; setSubmitting(true); setError('');
     try {
-      const saved = await api<{ id: string }>('/transport/requests', { method: 'POST', body: JSON.stringify({
+      const saved = await api<{ id: string; reference?: string }>('/transport/requests', { method: 'POST', body: JSON.stringify({
         adoption_application_id: adoptionId || undefined,
         pet_name: pet.name.trim(), pet_species: pet.species, pet_weight_kg: Number(pet.weight), has_carrier: pet.carrier,
         handling_requirements: pet.notes.trim() || undefined, preferred_schedule: manilaToIso(pet.schedule),
@@ -145,8 +152,11 @@ export function ShelterTransportForm({ applications }: { applications: Transport
         contact_name: contact.name.trim(), contact_phone: `+63${contact.phone}`, delivery_instructions: contact.instructions.trim() || undefined,
         destination_confirmed: true, policy_accepted: true,
       }) });
-      setDone({ reference: saved.id.slice(0, 8).toUpperCase() });
-    } catch (failure) { setError(messageOf(failure)); }
+      setDone({ reference: saved.reference ?? saved.id.slice(0, 8).toUpperCase() });
+    } catch (failure) {
+      if (failure instanceof ApiError && (failure.code === 'OUTSIDE_COVERAGE' || failure.code === 'COVERAGE_PAUSED')) setRefused(failure.message);
+      else setError(messageOf(failure));
+    }
     finally { sending.current = false; setSubmitting(false); }
   }
 
@@ -227,7 +237,8 @@ export function ShelterTransportForm({ applications }: { applications: Transport
             <div><dt>Travel time</dt><dd>About {travelTime(ready.route.duration_minutes)}</dd></div>
             <div><dt>Coverage</dt><dd><span className={`badge transport-coverage-${ready.coverage.status}`}>{coverageText[ready.coverage.status] ?? ready.coverage.status.replaceAll('_', ' ')}</span></dd></div>
           </dl>
-          <div className="transport-estimate"><h3>Price</h3><p>Staff will send you a quote after reviewing your request.</p></div>
+          {blocked ? <div className="notice error" role="alert"><p>{blocked}</p>{ready.coverage.reason === 'beyond_max_distance' && <p className="small">Shelter transport goes up to {ready.coverage.max_distance_km} km by road from the shelter.</p>}<button type="button" className="btn btn-secondary" onClick={toAlternative}>Send an Alternative request<ArrowRight size={16} /></button></div>
+            : <div className="transport-estimate"><h3>Price</h3><p>Staff will send you a quote after reviewing your request.</p></div>}
         </>}
       </div>
       <dl className="transport-recap">
@@ -244,6 +255,7 @@ export function ShelterTransportForm({ applications }: { applications: Transport
       <label className="checkbox-label"><input type="checkbox" checked={policy} onChange={event => setPolicy(event.target.checked)} /><span>I have read and accept the <Link to="/terms" target="_blank">pet transport policy</Link>.</span></label>
       <label className="checkbox-label"><input type="checkbox" checked={pet.carrier} onChange={event => setPet({ ...pet, carrier: event.target.checked })} />I have a suitable, secure pet carrier or crate.</label>
       {error && <div className="notice error" role="alert">{error}</div>}
+      {blocked && <div className="notice error" role="alert"><p>{blocked}</p><button type="button" className="btn btn-secondary" onClick={toAlternative}>Send an Alternative request<ArrowRight size={16} /></button></div>}
       {missing.length > 0 && <p className="muted small">Before you can submit: {missing.join(', ')}.</p>}
       <button className="btn btn-primary" disabled={submitting || missing.length > 0}>{submitting ? 'Sending request…' : 'Submit transport request'}<ArrowRight size={17} /></button>
     </fieldset>
