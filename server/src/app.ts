@@ -47,7 +47,7 @@ export function createApp() {
   api.use(['/contact', '/newsletter'], formLimiter);
   // Stray reports may be anonymous, so they get the same abuse limit as the other public forms.
   api.post('/stray-reports', formLimiter);
-  api.use(['/maps', '/settings/shelter-location/address-lookup'], mapsLimiter);
+  api.use(['/maps', '/settings/shelter-location/address-lookup', '/transport/preview'], mapsLimiter);
   api.use('/operations/worker', operationsWorkerRouter);
   api.use(operationsPublicRouter);
   api.use('/admin/operations', operationsRouter);

@@ -15,7 +15,7 @@ adoptionRouter.post('/adoption-applications', async (req, res) => {
   res.status(201).json({ data });
 });
 adoptionRouter.get('/adoption-applications/mine', async (req, res) => {
-  res.json({ data: assertDb(await db().from('adoption_applications').select('*,pets(id,name,image_url),adoption_appointments(*)').eq('user_id', req.actor!.id).order('created_at', { ascending: false })) });
+  res.json({ data: assertDb(await db().from('adoption_applications').select('*,pets(id,name,species,image_url),adoption_appointments(*)').eq('user_id', req.actor!.id).order('created_at', { ascending: false })) });
 });
 adoptionRouter.post('/adoption-applications/:id/withdraw', async (req, res) => {
   res.json({ data: assertDb(await db().rpc('transition_adoption', { p_actor_id: req.actor!.id, p_application_id: uuid.parse(req.params.id), p_status: 'withdrawn', p_notes: 'Withdrawn by applicant.' })) });

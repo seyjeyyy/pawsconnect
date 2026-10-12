@@ -30,6 +30,11 @@ geoRouter.post('/maps/shelter-route', async (req, res) => {
   const shelter = await shelterLocation();
   res.json({ data: { ...await maps.route(shelter, destination), origin: { name: shelter.name, latitude: shelter.latitude, longitude: shelter.longitude } } });
 });
+// The address the map service has for a point, for filling in a form after a map pick. A suggestion, not a verified address.
+geoRouter.get('/maps/reverse', async (req, res) => {
+  const input = z.object({ latitude: z.coerce.number().min(-90).max(90), longitude: z.coerce.number().min(-180).max(180) }).strict().parse(req.query);
+  res.json({ data: await maps.reverse(input) });
+});
 geoRouter.post('/maps/route', async (req, res) => {
   const { origin, destination } = z.object({ origin: point, destination: point }).strict().parse(req.body);
   res.json({ data: await maps.route(origin, destination) });

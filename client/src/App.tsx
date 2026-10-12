@@ -27,7 +27,7 @@ const OperationsPage = lazy(() => import('./pages/Operations'));
 const services = () => import('./pages/Services');
 const MatchPage = lazy(() => services().then(m => ({ default: m.MatchPage })));
 const RescuePage = lazy(() => services().then(m => ({ default: m.RescuePage })));
-const TransportPage = lazy(() => services().then(m => ({ default: m.TransportPage })));
+const TransportPage = lazy(() => import('./pages/Transport').then(m => ({ default: m.TransportPage })));
 const DonatePage = lazy(() => services().then(m => ({ default: m.DonatePage })));
 const VolunteerPage = lazy(() => services().then(m => ({ default: m.VolunteerPage })));
 const AboutPage = lazy(() => services().then(m => ({ default: m.AboutPage })));

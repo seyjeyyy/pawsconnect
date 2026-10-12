@@ -1,0 +1,12 @@
+/* Unlayered on purpose: it must sit beside Leaflet's own stylesheet, above the layered app styles. */
+.transport-map { width: 100%; border-radius: 12px; overflow: hidden; background: var(--cream-deep); isolation: isolate; z-index: 0; }
+.transport-map-small { height: 180px; }
+.transport-map-medium { height: 320px; }
+/* Global image resets shrink map tiles and leave seams; tiles must keep their own size. */
+.transport-map.leaflet-container img { max-width: none; max-height: none; }
+
+.transport-marker span { display: grid; place-items: center; }
+.transport-marker-shelter span { width: 36px; height: 36px; border-radius: 50%; background: var(--orange); color: var(--white); border: 3px solid var(--white); box-shadow: 0 3px 8px rgb(0 0 0 / 0.35); }
+.transport-marker-destination span { width: 28px; height: 28px; background: #2563eb; border: 3px solid var(--white); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 3px 8px rgb(0 0 0 / 0.35); position: relative; }
+.transport-marker-destination span::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--white); }
+@media (max-width: 700px) { .transport-map-medium { height: 280px; } }

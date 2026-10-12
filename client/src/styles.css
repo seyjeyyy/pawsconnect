@@ -62,6 +62,11 @@ main:focus { outline:none; }
 /* Unlayered on purpose: the sign-in button is styled with utilities, which outrank the components layer. */
 @media (max-width: 560px) { .login-button { display: none; } }
 
+/* Every map. At fractional display scaling (125%, 150%) tile edges are drawn half-transparent and the page shows through
+   as hairlines. Adding the two edges together instead of layering them makes the join solid. Each tile layer is its own
+   stacking context, so this only ever blends tiles with each other. Unlayered so it sits beside Leaflet's own stylesheet. */
+.leaflet-container .leaflet-tile { mix-blend-mode: plus-lighter; }
+
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 @layer components {

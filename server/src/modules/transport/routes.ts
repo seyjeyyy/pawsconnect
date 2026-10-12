@@ -5,20 +5,58 @@ import { authenticate } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { uuid } from '../../utils/validation.js';
 import { shelterLocation } from '../shelter/location.js';
+import { eligibility } from '../geofencing/service.js';
+import { maps } from '../../integrations/maps.js';
+import { point } from '../../utils/validation.js';
 export const transportRouter = Router();
 transportRouter.use(authenticate);
-export const transportInput = z.object({ pet_id: uuid.optional(), adoption_application_id: uuid.optional(), pet_details: z.string().min(5).max(3000), dropoff_address: z.string().min(5).max(500),
-  // Shelter transport always starts at the official shelter. Pickup values from the browser are accepted so older pages keep working, and never used.
+// What the customer tells us. Everything about the pickup, the route, coverage and price is worked out here, not sent in.
+export const transportInput = z.object({
+  pet_id: uuid.optional(), adoption_application_id: uuid.optional(),
+  pet_name: z.string().trim().min(1).max(100), pet_species: z.enum(['dog', 'cat', 'other']), pet_weight_kg: z.number().min(0.1).max(150), has_carrier: z.boolean(),
+  handling_requirements: z.string().trim().max(2000).optional(),
+  preferred_schedule: z.string().datetime({ offset: true }).refine(v => Date.parse(v) > Date.now(), 'Choose a future schedule.'),
+  dropoff_street: z.string().trim().min(3).max(300), dropoff_barangay: z.string().trim().max(100).default(''), dropoff_city: z.string().trim().min(2).max(100), dropoff_province: z.string().trim().min(2).max(100),
+  dropoff_latitude: z.number().min(-90).max(90), dropoff_longitude: z.number().min(-180).max(180),
+  contact_name: z.string().trim().min(2).max(120), contact_phone: z.string().trim().regex(/^\+639\d{9}$/, 'Enter a Philippine mobile number as +639XXXXXXXXX.'),
+  delivery_instructions: z.string().trim().max(1000).optional(),
+  destination_confirmed: z.literal(true, { errorMap: () => ({ message: 'Confirm the destination before submitting.' }) }),
+  policy_accepted: z.literal(true, { errorMap: () => ({ message: 'Accept the transport policy before submitting.' }) }),
+  // Shelter transport always starts at the official shelter. Pickup values from the browser are accepted and never used.
   pickup_address: z.unknown().optional(), pickup_latitude: z.unknown().optional(), pickup_longitude: z.unknown().optional(),
-  dropoff_latitude: z.number().min(-90).max(90), dropoff_longitude: z.number().min(-180).max(180), preferred_schedule: z.string().datetime({ offset: true }).refine(v => Date.parse(v) > Date.now(), 'Choose a future schedule.'), contact_phone: z.string().min(7).max(30), handling_requirements: z.string().max(2000).optional() }).strict();
-transportRouter.post('/transport/requests', async (req, res) => {
-  const { pickup_address: _address, pickup_latitude: _latitude, pickup_longitude: _longitude, ...input } = transportInput.parse(req.body);
-  if (input.adoption_application_id) assertDb(await db().from('adoption_applications').select('id').eq('id', input.adoption_application_id).eq('user_id', req.actor!.id).single());
+}).strict();
+// The route, coverage and estimate for a destination, for the form's summary panel. Always from the official shelter.
+transportRouter.post('/transport/preview', async (req, res) => {
+  const { destination } = z.object({ destination: point }).strict().parse(req.body);
   const shelter = await shelterLocation();
-  // Saved on the request itself, so a later change to the shelter record does not rewrite this booking.
-  const pickup = { pickup_address: [shelter.name, shelter.formatted_address].filter(Boolean).join(', '), pickup_latitude: shelter.latitude, pickup_longitude: shelter.longitude };
+  const [route, coverage] = await Promise.all([
+    maps.route(shelter, destination).catch(() => { throw new ApiError(502, 'ROUTE_UNAVAILABLE', 'We couldn’t calculate the route. Please try again.'); }),
+    eligibility('transport', destination.latitude, destination.longitude),
+  ]);
+  res.json({ data: {
+    origin: { name: shelter.name, formatted_address: shelter.formatted_address, latitude: shelter.latitude, longitude: shelter.longitude, google_maps_url: shelter.google_maps_url },
+    route: { distance_km: Math.round(route.distance_meters / 100) / 10, duration_minutes: Math.max(1, Math.round(route.duration_seconds / 60)), geometry: route.geometry },
+    coverage: { status: coverage.status },
+    // No pricing is configured, so there is nothing to estimate from.
+    estimate: null,
+  } });
+});
+transportRouter.post('/transport/requests', async (req, res) => {
+  const input = transportInput.parse(req.body);
+  let petId = input.pet_id;
+  if (input.adoption_application_id) petId ??= assertDb<{ pet_id: string }>(await db().from('adoption_applications').select('id,pet_id').eq('id', input.adoption_application_id).eq('user_id', req.actor!.id).single()).pet_id;
+  const shelter = await shelterLocation();
+  const data = assertDb<{ coverage_status: string }>(await db().from('transport_requests').insert({
+    user_id: req.actor!.id, pet_id: petId, adoption_application_id: input.adoption_application_id,
+    pet_details: `${input.pet_name} — ${input.pet_species}, ${input.pet_weight_kg} kg. ${input.has_carrier ? 'Customer has a secure carrier.' : 'Customer does not have a carrier.'}`,
+    // Saved on the request itself, so a later change to the shelter record does not rewrite this booking.
+    pickup_address: [shelter.name, shelter.formatted_address].filter(Boolean).join(', '), pickup_latitude: shelter.latitude, pickup_longitude: shelter.longitude,
+    dropoff_address: [input.dropoff_street, input.dropoff_barangay, input.dropoff_city, input.dropoff_province].filter(Boolean).join(', '),
+    dropoff_latitude: input.dropoff_latitude, dropoff_longitude: input.dropoff_longitude,
+    preferred_schedule: input.preferred_schedule, contact_phone: input.contact_phone,
+    handling_requirements: [input.handling_requirements, input.delivery_instructions && `Delivery instructions: ${input.delivery_instructions}`, `Contact name: ${input.contact_name}`].filter(Boolean).join('\n'),
+  }).select().single());
   // The database classifies coverage when the row is saved; the answer below is what it stored.
-  const data = assertDb<{ coverage_status: string }>(await db().from('transport_requests').insert({ ...input, ...pickup, user_id: req.actor!.id }).select().single());
   const coverage_status = data.coverage_status;
   res.status(201).json({ data, meta: { alternative_available: coverage_status === 'outside_coverage', message: coverage_status === 'outside_coverage' ? 'Your location is outside our shelter-operated transportation area. You may request an alternative transportation arrangement.' : 'The shelter must review availability, handling requirements, and the route before confirming.' } });
 });

@@ -38,7 +38,7 @@ shelterRouter.get('/shelter-location', async (_req, res) => {
 const editors = [authenticate, authorize('administrator', 'super_administrator')];
 shelterRouter.get('/settings/shelter-location/address-lookup', ...editors, async (req, res) => {
   const input = z.object({ latitude: z.coerce.number().min(-90).max(90), longitude: z.coerce.number().min(-180).max(180) }).strict().parse(req.query);
-  res.json({ data: { suggested_address: await maps.reverse(input) } });
+  res.json({ data: { suggested_address: (await maps.reverse(input))?.address ?? null } });
 });
 const locationInput = point.extend({
   name: z.string().trim().min(2).max(150),

@@ -26,7 +26,7 @@ vi.mock('../../server/src/config/supabase', () => ({ db: () => ({
     return builder;
   },
 }) }));
-vi.mock('../../server/src/integrations/maps', () => ({ maps: { reverse: async (point: { latitude: number; longitude: number }) => { state.lookups.push(`${point.latitude},${point.longitude}`); return 'Suggested road, Bulacan, Philippines'; } } }));
+vi.mock('../../server/src/integrations/maps', () => ({ maps: { reverse: async (point: { latitude: number; longitude: number }) => { state.lookups.push(`${point.latitude},${point.longitude}`); return { address: 'Suggested road, Bulacan, Philippines', street: 'Suggested road', barangay: '', city: '', province: 'Bulacan' }; } } }));
 import { createApp } from '../../server/src/app';
 import { forgetShelterLocation } from '../../server/src/modules/shelter/location';
 

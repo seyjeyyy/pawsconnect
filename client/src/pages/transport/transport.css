@@ -1,0 +1,64 @@
+/* Shelter transport request: numbered sections on the left, route and summary beside them on wide screens. */
+@layer components {
+  .transport-form { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); align-items: start; min-width: 0; }
+  .transport-section { display: grid; gap: 1rem; min-width: 0; margin: 0; }
+  .transport-section > legend, .transport-summary > summary { font-weight: 750; font-size: 1.1rem; color: var(--navy); }
+  .transport-section > legend { display: flex; align-items: center; gap: 0.6rem; padding: 0; float: left; width: 100%; }
+  .transport-section > legend + * { clear: both; }
+  .transport-section > legend > span, .transport-step { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; flex: none; border-radius: 50%; background: var(--navy); color: var(--white); font-size: 0.85rem; font-weight: 700; }
+  .transport-form .checkbox-label { align-items: flex-start; }
+  .transport-form > .transport-section > .btn { justify-self: start; }
+
+  .transport-pickup { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .transport-pickup > div:first-child { display: grid; gap: 0.35rem; justify-items: start; }
+  .transport-map-loading { display: grid; place-items: center; width: 100%; border-radius: 12px; background: var(--cream-deep); color: var(--muted); font-size: 0.9rem; }
+
+  .transport-choices { display: grid; gap: 0.4rem; }
+  .transport-choices > button { display: flex; align-items: flex-start; gap: 0.5rem; width: 100%; padding: 0.65rem 0.8rem; text-align: left; background: var(--white); border: 1px solid var(--line-strong); border-radius: 12px; color: var(--ink); }
+  .transport-choices > button:hover { border-color: var(--navy); }
+  .transport-choices > button svg { flex: none; margin-top: 3px; color: var(--orange-dark); }
+  .transport-nearby { display: grid; gap: 0.6rem; }
+  .transport-phone { display: flex; align-items: stretch; }
+  .transport-phone > span { display: grid; place-items: center; padding-inline: 0.8rem; background: var(--cream); border: 1px solid var(--line-strong); border-right: 0; border-radius: 12px 0 0 12px; font-weight: 650; color: var(--navy); }
+  .transport-phone > input { border-top-left-radius: 0; border-bottom-left-radius: 0; min-width: 0; flex: 1; }
+
+  .transport-summary { min-width: 0; }
+  .transport-summary > summary { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; cursor: pointer; list-style: none; }
+  .transport-summary > summary::-webkit-details-marker { display: none; }
+  .transport-summary > summary > span:first-child { display: flex; align-items: center; gap: 0.6rem; }
+  .transport-summary > summary::after { content: ""; width: 0.6rem; height: 0.6rem; flex: none; border-right: 2px solid var(--navy); border-bottom: 2px solid var(--navy); transform: rotate(45deg); transition: transform 0.15s; }
+  .transport-summary[open] > summary::after { transform: rotate(-135deg); }
+  .transport-summary > * + * { margin-top: 1rem; }
+  .transport-facts, .transport-recap { display: grid; gap: 0.75rem; margin: 0; }
+  .transport-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .transport-facts > div:last-child { grid-column: 1 / -1; }
+  .transport-facts dt, .transport-recap dt { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  .transport-facts dd, .transport-recap dd { margin: 0.1rem 0 0; overflow-wrap: anywhere; }
+  .transport-facts dd { font-weight: 700; color: var(--navy); }
+  .transport-recap { padding-top: 1rem; border-top: 1px solid var(--line); }
+  .transport-estimate { margin-top: 1rem; padding: 0.9rem 1rem; background: var(--tint); border-radius: 12px; }
+  .transport-estimate h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
+  .transport-estimate p { margin: 0; }
+  .transport-coverage-outside_coverage { background: #fef2f2; color: #991b1b; }
+  .transport-coverage-within_coverage { background: #f0fdf4; color: #166534; }
+
+  .transport-done { display: grid; gap: 0.75rem; justify-items: start; }
+  .transport-done > svg { color: var(--green); }
+  .transport-done ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.35rem; }
+  .transport-reference { font-size: 1.1rem; }
+  .transport-guest { display: grid; gap: 0.9rem; justify-items: start; }
+  .transport-guest ul { margin: 0; padding-left: 1.2rem; }
+
+  .transport-toolbar { margin-bottom: 1.25rem; }
+  .transport-notes { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); margin-top: 2rem; }
+
+  @media (min-width: 640px) { .transport-pickup { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  @media (min-width: 1100px) {
+    .transport-form { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+    .transport-form > * { grid-column: 1; }
+    .transport-form > .transport-summary { grid-column: 2; grid-row: 1 / span 4; position: sticky; top: 5.5rem; }
+    /* Beside the form the summary is always open. */
+    .transport-summary > summary { pointer-events: none; }
+    .transport-summary > summary::after { display: none; }
+  }
+}
