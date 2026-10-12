@@ -13,6 +13,7 @@ export function workspacePermissions(method: string, path: string): string[] {
   if (['payments','refunds','expenses'].includes(resource)) return ['finance.manage'];
   if (resource === 'donations') return method === 'GET' ? ['donations.view'] : ['donations.manage'];
   if (resource === 'volunteers') return ['volunteers.manage'];
+  if (resource === 'transport-settings') return ['transport.manage'];
   if (resource === 'zones') return method==='GET'?['zones.view','zones.manage']:['zones.manage'];
   if (resource === 'contact_messages') return ['contacts.manage'];
   return [];

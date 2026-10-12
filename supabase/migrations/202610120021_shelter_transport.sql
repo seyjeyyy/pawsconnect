@@ -94,4 +94,23 @@ begin
   end loop;
   if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('transition_transport','create_transport_quote'))<>2 then raise exception 'Expected transport functions are missing'; end if;
 end $$;
+
+-- The only way to change delivery range and pricing: an administrator holding the transport
+-- module, with a reason, and with the before and after values written to the audit trail.
+create function public.update_transport_settings(p_actor_id uuid, p_max_distance_km numeric, p_base_fee_centavos bigint, p_rate_per_km_centavos bigint, p_handling_fees jsonb, p_surcharges jsonb, p_reason text)
+returns public.transport_settings language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_before public.transport_settings; v_after public.transport_settings; begin
+  if not (public.has_role(p_actor_id, array['administrator']) and public.has_permission(p_actor_id, 'transport.manage')) then raise exception 'Administrator role required' using errcode='42501'; end if;
+  if length(trim(coalesce(p_reason, ''))) < 5 then raise exception 'A reason for the change is required'; end if;
+  if jsonb_typeof(p_handling_fees) is distinct from 'object' or jsonb_typeof(p_surcharges) is distinct from 'array' then raise exception 'Invalid pricing settings'; end if;
+  select * into v_before from public.transport_settings where id for update;
+  update public.transport_settings set max_distance_km=p_max_distance_km, base_fee_centavos=p_base_fee_centavos, rate_per_km_centavos=p_rate_per_km_centavos,
+    handling_fees=p_handling_fees, surcharges=p_surcharges, updated_by=p_actor_id, updated_at=now() where id returning * into v_after;
+  insert into public.audit_logs(actor_id, action, entity_type, details)
+  values(p_actor_id, 'transport_settings.updated', 'transport_settings', jsonb_build_object('reason', trim(p_reason),
+    'before', to_jsonb(v_before) - 'id' - 'updated_by' - 'updated_at', 'after', to_jsonb(v_after) - 'id' - 'updated_by' - 'updated_at'));
+  return v_after;
+end $$;
+revoke execute on function public.update_transport_settings(uuid, numeric, bigint, bigint, jsonb, jsonb, text) from public, anon, authenticated;
+grant execute on function public.update_transport_settings(uuid, numeric, bigint, bigint, jsonb, jsonb, text) to service_role;
 notify pgrst, 'reload schema';

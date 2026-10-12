@@ -39,6 +39,14 @@
   .transport-estimate { margin-top: 1rem; padding: 0.9rem 1rem; background: var(--tint); border-radius: 12px; }
   .transport-estimate h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
   .transport-estimate p { margin: 0; }
+  .transport-lines { display: grid; gap: 0.35rem; margin: 0.4rem 0 0; }
+  .transport-lines > div { display: flex; justify-content: space-between; gap: 1rem; }
+  .transport-lines dt { overflow-wrap: anywhere; }
+  .transport-lines dd { margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .transport-total { padding-top: 0.4rem; border-top: 1px solid var(--line-strong); font-weight: 750; color: var(--navy); }
+  .transport-settings { display: grid; gap: 1.25rem; min-width: 0; max-width: 860px; }
+  .transport-settings > .btn { justify-self: start; }
+  .transport-surcharge { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); align-items: end; padding-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
   .transport-coverage-outside_coverage { background: #fef2f2; color: #991b1b; }
   .transport-coverage-within_coverage { background: #f0fdf4; color: #166534; }
 

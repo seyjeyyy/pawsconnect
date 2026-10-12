@@ -124,3 +124,30 @@ describe('a booking that starts at the official shelter', () => {
     await expect(asUser(db, customer, tx => tx.query("update public.transport_requests set status='completed'"))).rejects.toThrow(/permission denied/);
   });
 });
+
+describe('transport pricing settings', () => {
+  const save = (actor: string, values: Partial<{ max: number | null; base: number | null; rate: number | null; reason: string }> = {}) =>
+    db.query('select * from public.update_transport_settings($1,$2,$3,$4,$5,$6,$7)', [actor, values.max ?? null, values.base === undefined ? 10000 : values.base, values.rate === undefined ? 1500 : values.rate, JSON.stringify({ species: { dog: 5000 } }), JSON.stringify([{ label: 'Carrier loan', amount_centavos: 4000, when: 'no_carrier' }]), values.reason ?? 'Rates approved for the test']);
+  it('can be changed only by an administrator holding the transport module, never from a browser session', async () => {
+    for (const actor of [customer, staff, limited, system, driver]) await expect(save(actor), actor).rejects.toThrow(/Administrator role required/);
+    await expect(asUser(db, admin, tx => tx.query("select public.update_transport_settings($1,null,1,1,'{}','[]','Called from a browser session')", [admin]))).rejects.toThrow(/permission denied/);
+    expect((await one('select base_fee_centavos from public.transport_settings')).base_fee_centavos).toBeNull();
+  });
+  it('needs a reason and well-formed values', async () => {
+    await expect(save(admin, { reason: 'x' })).rejects.toThrow(/reason/);
+    await expect(save(admin, { base: -1 })).rejects.toThrow();
+    await expect(save(admin, { max: 0 })).rejects.toThrow();
+    await expect(db.query("select public.update_transport_settings($1,null,1,1,'[]','[]','Wrong shape for the test')", [admin])).rejects.toThrow(/Invalid pricing settings/);
+  });
+  it('saves the values and records before and after in the audit trail', async () => {
+    await save(admin, { max: 60 });
+    expect(await one('select max_distance_km,base_fee_centavos,rate_per_km_centavos,handling_fees,surcharges,updated_by from public.transport_settings')).toEqual({ max_distance_km: '60.0', base_fee_centavos: 10000, rate_per_km_centavos: 1500, handling_fees: { species: { dog: 5000 } }, surcharges: [{ label: 'Carrier loan', amount_centavos: 4000, when: 'no_carrier' }], updated_by: admin });
+    const audit = await one("select actor_id,details from public.audit_logs where action='transport_settings.updated' order by created_at desc limit 1");
+    expect(audit.actor_id).toBe(admin);
+    expect(audit.details).toMatchObject({ reason: 'Rates approved for the test', before: { base_fee_centavos: null, rate_per_km_centavos: null }, after: { base_fee_centavos: 10000, rate_per_km_centavos: 1500, max_distance_km: 60 } });
+    // Clearing the values again is a change like any other.
+    await save(admin, { base: null, rate: null });
+    expect(await one('select base_fee_centavos,rate_per_km_centavos,max_distance_km from public.transport_settings')).toEqual({ base_fee_centavos: null, rate_per_km_centavos: null, max_distance_km: null });
+    expect((await one("select count(*)::int n from public.audit_logs where action='transport_settings.updated'")).n).toBe(2);
+  });
+});

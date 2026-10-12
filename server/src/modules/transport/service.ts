@@ -3,11 +3,12 @@ import { maps } from '../../integrations/maps.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { eligibility, type Coverage } from '../geofencing/service.js';
 import { shelterLocation, type ShelterLocation } from '../shelter/location.js';
+import type { HandlingFees, Surcharge } from './estimate.js';
 
 // Everything a shelter transport request needs that the customer does not supply:
 // where it starts, how far it is by road, and whether the destination is covered.
 type Point = { latitude: number; longitude: number };
-export type TransportSettings = { max_distance_km: number | null; base_fee_centavos: number | null; rate_per_km_centavos: number | null; handling_fees: Record<string, number>; surcharges: { label: string; amount_centavos: number }[] };
+export type TransportSettings = { max_distance_km: number | null; base_fee_centavos: number | null; rate_per_km_centavos: number | null; handling_fees: HandlingFees; surcharges: Surcharge[] };
 export type TransportCoverage = { status: Coverage['status']; reason?: 'beyond_max_distance'; max_distance_km?: number };
 export type TransportPlan = { shelter: ShelterLocation; route: { distance_km: number; duration_minutes: number; geometry: [number, number][] }; coverage: TransportCoverage; settings: TransportSettings };
 

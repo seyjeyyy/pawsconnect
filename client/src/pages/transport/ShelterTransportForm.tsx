@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ExternalLink, LocateFixed, MapPin, RefreshCw, Search } from 'lucide-react';
 import type { LocationValue } from '../../components/location';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, money } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useShelterLocation } from '../../components/ShelterPickup';
 import './transport.css';
@@ -14,7 +14,7 @@ export type TransportApplication = { id: string; status: string; pets?: { name?:
 type Destination = { landmark: string; street: string; barangay: string; city: string; province: string; latitude?: number; longitude?: number };
 type Place = { address: string; street: string; barangay: string; city: string; province: string };
 type SearchResult = { address: string; latitude: number; longitude: number; place_id: string };
-type Preview = { route: { distance_km: number; duration_minutes: number; geometry: [number, number][] }; coverage: { status: string; reason?: string; max_distance_km?: number; message: string | null }; estimate: { total_centavos: number } | null };
+type Preview = { route: { distance_km: number; duration_minutes: number; geometry: [number, number][] }; coverage: { status: string; reason?: string; max_distance_km?: number; message: string | null }; estimate: { total_centavos: number; lines: { label: string; amount_centavos: number }[]; pending: string[] } | null };
 type PreviewState = { state: 'idle' } | { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; data: Preview };
 
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
@@ -116,13 +116,15 @@ export function ShelterTransportForm({ applications, onAlternative }: { applicat
     if (destination.latitude === undefined || destination.longitude === undefined) { setPreview({ state: 'idle' }); return; }
     setPreview({ state: 'loading' });
     const controller = new AbortController();
-    const body = JSON.stringify({ destination: { latitude: destination.latitude, longitude: destination.longitude } });
+    const weight = Number(pet.weight);
+    const body = JSON.stringify({ destination: { latitude: destination.latitude, longitude: destination.longitude }, pet: { species: pet.species, has_carrier: pet.carrier, ...(weight >= 0.1 && weight <= 150 ? { weight_kg: weight } : {}) } });
     const timer = setTimeout(async () => {
       try { setPreview({ state: 'ready', data: await api<Preview>('/transport/preview', { method: 'POST', body, signal: controller.signal }) }); }
       catch (failure) { if (!controller.signal.aborted) setPreview({ state: 'error', message: messageOf(failure) }); }
     }, 600);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [destination.latitude, destination.longitude, attempt]);
+    // Recalculated when the pin moves, and when a detail the estimate depends on changes.
+  }, [destination.latitude, destination.longitude, pet.species, pet.weight, pet.carrier, attempt]);
 
   const ready = preview.state === 'ready' ? preview.data : null;
   // Outside the delivery area, or paused there: shelter transport cannot be booked, and the Alternative request is offered instead.
@@ -238,6 +240,7 @@ export function ShelterTransportForm({ applications, onAlternative }: { applicat
             <div><dt>Coverage</dt><dd><span className={`badge transport-coverage-${ready.coverage.status}`}>{coverageText[ready.coverage.status] ?? ready.coverage.status.replaceAll('_', ' ')}</span></dd></div>
           </dl>
           {blocked ? <div className="notice error" role="alert"><p>{blocked}</p>{ready.coverage.reason === 'beyond_max_distance' && <p className="small">Shelter transport goes up to {ready.coverage.max_distance_km} km by road from the shelter.</p>}<button type="button" className="btn btn-secondary" onClick={toAlternative}>Send an Alternative request<ArrowRight size={16} /></button></div>
+            : ready.estimate ? <div className="transport-estimate"><h3>Estimate — final price is confirmed by staff.</h3><dl className="transport-lines">{ready.estimate.lines.map(line => <div key={line.label}><dt>{line.label}</dt><dd>{money(line.amount_centavos)}</dd></div>)}<div className="transport-total"><dt>Estimated total</dt><dd>{money(ready.estimate.total_centavos)}</dd></div></dl>{ready.estimate.pending.includes('weight') && <p className="small muted">Enter the pet’s weight to include the handling fee.</p>}</div>
             : <div className="transport-estimate"><h3>Price</h3><p>Staff will send you a quote after reviewing your request.</p></div>}
         </>}
       </div>

@@ -19,3 +19,9 @@ it('lists the section once for an account holding both administrator roles', () 
   const sections = workspaceSections(['administrator', 'super_administrator'], adminModules);
   expect(sections.filter(section => section === 'shelter_location')).toHaveLength(1);
 });
+it('shows transport pricing to administrators holding the transport module only', () => {
+  expect(workspaceSections([...community, 'administrator'], adminModules)).toContain('transport_settings');
+  expect(workspaceSections([...community, 'administrator'], ['animals.view', 'zones.manage'])).not.toContain('transport_settings');
+  for (const role of ['shelter_staff', 'shelter_driver', 'veterinarian']) expect(workspaceSections([...community, role], adminModules), role).not.toContain('transport_settings');
+  expect(workspaceSections([...community, 'super_administrator'], [])).not.toContain('transport_settings');
+});

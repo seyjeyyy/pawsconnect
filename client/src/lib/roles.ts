@@ -15,8 +15,8 @@ export const isOperational = (roles: string[]) => roles.some(role => staff.inclu
 
 const systemSections = ['security', 'security_alerts', 'security_events', 'critical_approvals', 'users', 'audit_logs', 'shelter_location'];
 // Settings that only an administrator or the super administrator may open.
-const administratorSections = ['shelter_location'];
-const staffSections = ['overview', 'payments', 'refunds', 'reviews', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'shelter_location', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
+const administratorSections = ['shelter_location', 'transport_settings'];
+const staffSections = ['overview', 'payments', 'refunds', 'reviews', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'shelter_location', 'transport_settings', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
 const fieldSections: Record<string, string[]> = {
   veterinarian: ['pets', 'health'],
   rescue_personnel: ['rescue'],
@@ -42,7 +42,7 @@ export const sectionPermissions: Record<string,string[]> = {
   transport:['transport.manage','transport.assigned'],alternatives:['transport.manage'],vehicles:['transport.manage'],drivers:['transport.manage'],
   products:['store.manage'],categories:['store.manage'],orders:['store.manage'],reviews:['store.manage'],
   payments:['finance.manage'],refunds:['finance.manage'],expenses:['finance.manage'],donations:['donations.view'],
-  volunteers:['volunteers.manage'],zones:['zones.view','zones.manage'],shelter_location:['zones.manage'],contact_messages:['contacts.manage'],
+  volunteers:['volunteers.manage'],zones:['zones.view','zones.manage'],shelter_location:['zones.manage'],transport_settings:['transport.manage'],contact_messages:['contacts.manage'],
 };
 
 /** Section titles as a field role sees them: their own work, not the shelter's whole list. */

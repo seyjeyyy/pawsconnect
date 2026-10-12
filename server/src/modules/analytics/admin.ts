@@ -7,6 +7,7 @@ import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
 import { connectedAdminRouter } from './connected.js';
 import { workspacePermissions } from '../../middleware/permissions.js';
 import { emailOwner, pesos, readable } from '../../integrations/email.js';
+import { forgetTransportSettings } from '../transport/service.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -177,6 +178,28 @@ adminRouter.post('/transport/:id/quote', async (req, res) => {
 adminRouter.post('/transport/:id/handover', async (req, res) => {
   const input = z.object({ recipient_name: z.string().min(2).max(120), notes: z.string().min(5).max(2000) }).strict().parse(req.body);
   res.json({ data: assertDb(await db().rpc('confirm_transport_handover', { p_actor_id: req.actor!.id, p_request_id: uuid.parse(req.params.id), p_recipient_name: input.recipient_name, p_notes: input.notes })) });
+});
+// Delivery range and pricing for shelter transport. Staff with the transport module read them; only an administrator changes them.
+const optionalMoney = money.nullable();
+const transportSettingsInput = z.object({
+  max_distance_km: z.number().positive().max(2000).nullable(),
+  base_fee_centavos: optionalMoney, rate_per_km_centavos: optionalMoney,
+  handling_fees: z.object({
+    species: z.object({ dog: optionalMoney, cat: optionalMoney, other: optionalMoney }).strict(),
+    size: z.object({ small_max_kg: z.number().positive().max(150).nullable(), medium_max_kg: z.number().positive().max(150).nullable(), small: optionalMoney, medium: optionalMoney, large: optionalMoney }).strict()
+      .refine(size => size.small_max_kg === null || size.medium_max_kg === null || size.medium_max_kg > size.small_max_kg, 'The medium limit must be above the small limit.'),
+  }).strict(),
+  surcharges: z.array(z.object({ label: z.string().trim().min(2).max(80), amount_centavos: money, when: z.enum(['always', 'no_carrier']) }).strict()).max(10),
+  reason: z.string().trim().min(5).max(500),
+}).strict();
+adminRouter.get('/transport-settings', async (_req, res) => {
+  res.json({ data: assertDb(await db().from('transport_settings').select('max_distance_km,base_fee_centavos,rate_per_km_centavos,handling_fees,surcharges,updated_at').maybeSingle()) });
+});
+adminRouter.put('/transport-settings', authorize('administrator'), async (req, res) => {
+  const input = transportSettingsInput.parse(req.body);
+  const data = assertDb(await db().rpc('update_transport_settings', { p_actor_id: req.actor!.id, p_max_distance_km: input.max_distance_km, p_base_fee_centavos: input.base_fee_centavos, p_rate_per_km_centavos: input.rate_per_km_centavos, p_handling_fees: input.handling_fees, p_surcharges: input.surcharges, p_reason: input.reason }));
+  forgetTransportSettings();
+  res.json({ data });
 });
 adminRouter.patch('/alternatives/:id/status', async (req, res) => {
   const input = z.object({ status: z.enum(['under_review', 'approved', 'declined', 'completed', 'cancelled']), notes: z.string().max(3000).optional() }).strict().parse(req.body);

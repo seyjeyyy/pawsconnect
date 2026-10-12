@@ -5,7 +5,9 @@ import { expect, test, type Page } from '@playwright/test';
 const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const shelter = { name: 'PawsConnect Animal Shelter', latitude: 15.017163, longitude: 120.948071, google_maps_url: 'https://maps.app.goo.gl/e6hDczktzrXMntQr9', formatted_address: null };
 const outside = 'This location is outside our delivery area. You can send an Alternative request and our staff will review it.';
-async function fixture(page: Page, options: { signedIn?: boolean; routeFailures?: number; coverage?: string } = {}) {
+// Amounts are test inputs standing in for rates an administrator would enter.
+const estimate = { total_centavos: 46_600, lines: [{ label: 'Base fee', amount_centavos: 10_000 }, { label: 'Distance: 18.4 km × ₱15.00 per km', amount_centavos: 27_600 }, { label: 'Handling: dog', amount_centavos: 5_000 }, { label: 'Carrier loan', amount_centavos: 4_000 }], pending: [] };
+async function fixture(page: Page, options: { signedIn?: boolean; routeFailures?: number; coverage?: string; priced?: boolean } = {}) {
   const previews: any[] = [], bookings: any[] = []; let failures = options.routeFailures ?? 0;
   await page.route('**/tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: tile }));
   await page.route('**/src/lib/supabase.ts', route => route.fulfill({ contentType: 'application/javascript', body: `
@@ -23,7 +25,7 @@ async function fixture(page: Page, options: { signedIn?: boolean; routeFailures?
     else if (path === '/transport/preview') {
       previews.push(request.postDataJSON());
       if (failures-- > 0) return route.fulfill({ status: 502, json: { error: { code: 'ROUTE_UNAVAILABLE', message: 'We couldn’t calculate the route. Please try again.' } } });
-      data = { origin: shelter, route: { distance_km: 18.4, duration_minutes: 37, geometry: [[15.017163, 120.948071], [14.9, 120.9]] }, coverage: { status: options.coverage ?? 'within_coverage', message: options.coverage === 'outside_coverage' ? outside : null }, estimate: null };
+      data = { origin: shelter, route: { distance_km: 18.4, duration_minutes: 37, geometry: [[15.017163, 120.948071], [14.9, 120.9]] }, coverage: { status: options.coverage ?? 'within_coverage', message: options.coverage === 'outside_coverage' ? outside : null }, estimate: options.priced && options.coverage !== 'outside_coverage' ? estimate : null };
     }
     else if (path === '/transport/requests') { bookings.push(request.postDataJSON()); await new Promise(resolve => setTimeout(resolve, 300)); data = { id: 'abcd1234-0000-4000-8000-000000000000', reference: 'PT-TEST000001', status: 'submitted' }; }
     else if (path === '/assistant/bootstrap') data = { enabled: false };
@@ -50,7 +52,8 @@ async function searchForAddress(page: Page) {
 test('a guest is asked to sign in before any form is shown', async ({ page }) => {
   await fixture(page, { signedIn: false });
   await page.goto('/transport');
-  await expect(page.getByRole('heading', { name: 'Sign in to request pet transport' })).toBeVisible();
+  // The first page a fresh test server serves can take several seconds to compile.
+  await expect(page.getByRole('heading', { name: 'Sign in to request pet transport' })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('main').getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/auth/login?next=/transport');
   await expect(page.locator('form.transport-form')).toHaveCount(0);
   await expect(page.getByLabel('Pet name')).toHaveCount(0);
@@ -83,7 +86,8 @@ test('search, the map and the device location all move the same pin, and a chose
   await expect(form(page).getByText('18.4 km').first()).toBeVisible();
   // Search moves the pin and leaves the typed address alone.
   await expect(form(page).getByLabel('Street')).toHaveValue('12 Example Street');
-  expect(previews.at(-1)).toEqual({ destination: { latitude: 14.9, longitude: 120.9 } });
+  expect(previews.at(-1).destination).toEqual({ latitude: 14.9, longitude: 120.9 });
+  expect(Object.keys(previews.at(-1)).sort()).toEqual(['destination', 'pet']);
   const confirm = form(page).getByLabel(/I confirm the destination/);
   await confirm.check();
 
@@ -99,7 +103,7 @@ test('search, the map and the device location all move the same pin, and a chose
   await form(page).getByRole('button', { name: 'Replace my destination with this' }).click();
   await expect(form(page).getByLabel('Street')).toHaveValue('Fixture Road');
   await expect(confirm).not.toBeChecked();
-  await expect.poll(() => previews.at(-1)).toEqual({ destination: { latitude: 14.95, longitude: 120.95 } });
+  await expect.poll(() => previews.at(-1).destination).toEqual({ latitude: 14.95, longitude: 120.95 });
 
   // Clicking the map moves the same pin and fills the address in; it can then be corrected by hand.
   const map = form(page).getByRole('application', { name: /Destination map/ });
@@ -184,4 +188,26 @@ test('a destination outside the delivery area cannot be submitted and carries ov
   await expect(carried.getByLabel('Latitude')).toHaveValue('14.9');
   // The pickup on that tab is still for the customer to give.
   await expect(page.locator('fieldset.location-picker', { hasText: 'Pickup location' }).getByLabel('Street address or landmark')).toHaveValue('');
+});
+
+test('with pricing set up the form shows the breakdown as an estimate, not a price', async ({ page }) => {
+  const { bookings } = await fixture(page, { priced: true });
+  await page.goto('/transport');
+  await searchForAddress(page);
+  const panel = form(page).locator('.transport-estimate');
+  await expect(panel.getByRole('heading')).toHaveText('Estimate — final price is confirmed by staff.');
+  await expect(panel.getByText('Distance: 18.4 km × ₱15.00 per km')).toBeVisible();
+  await expect(panel.getByText('₱276.00')).toBeVisible();
+  await expect(panel.locator('.transport-total')).toContainText('₱466.00');
+  await expect(form(page).getByText('Staff will send you a quote after reviewing your request.')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  // The browser shows the estimate; it never sends one.
+  await form(page).getByLabel('Pet name').fill('Bantay'); await form(page).getByLabel('Weight in kilograms').fill('12');
+  await form(page).getByLabel('Preferred date and time (Philippine time)').fill('2030-01-15T10:00');
+  await form(page).getByLabel('Mobile number, ten digits after +63').fill('9171234567');
+  await expect(panel.getByText('₱466.00')).toBeVisible();
+  await form(page).getByLabel(/I confirm the destination/).check(); await form(page).getByLabel(/pet transport policy/).check();
+  await form(page).getByRole('button', { name: 'Submit transport request' }).click();
+  await expect(page.getByRole('heading', { name: 'Request received' })).toBeVisible();
+  expect(Object.keys(bookings[0]).filter(key => /estimate|fee|price|total/.test(key))).toEqual([]);
 });

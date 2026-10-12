@@ -6,6 +6,7 @@ import { ApiError, assertDb } from '../../utils/errors.js';
 import { uuid } from '../../utils/validation.js';
 import { point } from '../../utils/validation.js';
 import { coverageBlock, planTransport } from './service.js';
+import { estimateTransport } from './estimate.js';
 export const transportRouter = Router();
 transportRouter.use(authenticate);
 // What the customer tells us. Everything about the pickup, the route, coverage and price is worked out here, not sent in.
@@ -25,14 +26,14 @@ export const transportInput = z.object({
 }).strict();
 // The route, coverage and estimate for a destination, for the form's summary panel. Always from the official shelter.
 transportRouter.post('/transport/preview', async (req, res) => {
-  const { destination } = z.object({ destination: point }).strict().parse(req.body);
+  const { destination, pet } = z.object({ destination: point, pet: z.object({ species: z.enum(['dog', 'cat', 'other']).optional(), weight_kg: z.number().min(0.1).max(150).optional(), has_carrier: z.boolean().optional() }).strict().optional() }).strict().parse(req.body);
   const plan = await planTransport(destination);
   res.json({ data: {
     origin: { name: plan.shelter.name, formatted_address: plan.shelter.formatted_address, latitude: plan.shelter.latitude, longitude: plan.shelter.longitude, google_maps_url: plan.shelter.google_maps_url },
     route: plan.route,
     coverage: { ...plan.coverage, message: coverageBlock(plan.coverage)?.message ?? null },
-    // No pricing is configured, so there is nothing to estimate from.
-    estimate: null,
+    // Null until an administrator has entered a base fee and a rate per kilometre. An uncovered destination gets no estimate.
+    estimate: coverageBlock(plan.coverage) ? null : estimateTransport(plan.settings, { distance_km: plan.route.distance_km, ...pet }),
   } });
 });
 transportRouter.post('/transport/requests', async (req, res) => {
@@ -44,6 +45,7 @@ transportRouter.post('/transport/requests', async (req, res) => {
   const blocked = coverageBlock(plan.coverage);
   if (blocked) throw new ApiError(409, blocked.code, blocked.message);
   const { shelter, route } = plan;
+  const estimate = estimateTransport(plan.settings, { distance_km: route.distance_km, species: input.pet_species, weight_kg: input.pet_weight_kg, has_carrier: input.has_carrier });
   const data = assertDb<{ reference: string; coverage_status: string }>(await db().from('transport_requests').insert({
     user_id: req.actor!.id, pet_id: petId, adoption_application_id: input.adoption_application_id,
     pet_name: input.pet_name, pet_species: input.pet_species, pet_weight_kg: input.pet_weight_kg, has_carrier: input.has_carrier,
@@ -54,6 +56,8 @@ transportRouter.post('/transport/requests', async (req, res) => {
     dropoff_address: [input.dropoff_street, input.dropoff_barangay, input.dropoff_city, input.dropoff_province].filter(Boolean).join(', '),
     dropoff_latitude: input.dropoff_latitude, dropoff_longitude: input.dropoff_longitude,
     route_distance_km: route.distance_km, route_duration_minutes: route.duration_minutes, route_geometry: route.geometry,
+    // What the customer was shown. The final price is the staff quotation, saved separately.
+    estimate_breakdown: estimate ? { lines: estimate.lines, distance_km: route.distance_km } : null, estimate_total_centavos: estimate?.total_centavos ?? null,
     preferred_schedule: input.preferred_schedule, contact_name: input.contact_name, contact_phone: input.contact_phone,
     handling_requirements: input.handling_requirements, delivery_instructions: input.delivery_instructions,
   }).select().single());

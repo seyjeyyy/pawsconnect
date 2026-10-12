@@ -71,7 +71,9 @@ describe('what is saved', () => {
   it('keeps each part the customer entered and never a price, status or coverage from the browser', async () => {
     await submit({ handling_requirements: 'Nervous in cars', delivery_instructions: 'Blue gate' }).expect(201);
     expect(state.inserts[0]).toMatchObject({ pet_name: 'Bantay', pet_species: 'dog', pet_weight_kg: 12, has_carrier: true, pet_details: 'Bantay — dog, 12 kg. Customer has a secure carrier.', dropoff_street: '12 Example Street', dropoff_barangay: 'Example Barangay', dropoff_city: 'Example Town', dropoff_province: 'Bulacan', dropoff_address: '12 Example Street, Example Barangay, Example Town, Bulacan', contact_name: 'Ana Example', contact_phone: '+639171234567', handling_requirements: 'Nervous in cars', delivery_instructions: 'Blue gate' });
-    expect(Object.keys(state.inserts[0]).filter(key => /fee|status|paid|driver|vehicle|estimate|coverage/.test(key))).toEqual([]);
+    expect(Object.keys(state.inserts[0]).filter(key => /fee|status|paid|driver|vehicle|coverage/.test(key))).toEqual([]);
+    // The estimate is the server's own: with no pricing set up there is none.
+    expect(state.inserts[0]).toMatchObject({ estimate_breakdown: null, estimate_total_centavos: null });
   });
   it('links the animal from the customer’s own adoption application', async () => {
     await submit({ adoption_application_id: application }).expect(201);
