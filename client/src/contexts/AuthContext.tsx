@@ -10,7 +10,7 @@ function client() { if (!supabase) throw new Error('Accounts are unavailable unt
 export function AuthProvider({ children }: { children: ReactNode }) {
  const [user,setUser] = useState<User|null>(null), [loading,setLoading] = useState(!!supabase);
  const [sessionError,setSessionError] = useState<Error|null>(null);
- const cache = useQueryClient(); const previous = useRef<string | undefined>(undefined);
+ const cache = useQueryClient(); const previous = useRef<string | null | undefined>(undefined);
  useEffect(() => {
   if (!supabase) return; let active = true, observed = false;
   supabase.auth.getSession().then(({data,error}) => { if(active && !observed) { setUser(data.session?.user || null); setSessionError(error); setLoading(false); } }).catch(error => { if(active && !observed) {setSessionError(error);setLoading(false);} });
@@ -18,11 +18,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return () => { active=false;data.subscription.unsubscribe(); };
  },[]);
  useLayoutEffect(() => {
-  if(previous.current !== user?.id) {
-   if(previous.current !== undefined || user) void cache.resetQueries();
-   previous.current=user?.id;
+  if(loading) return;
+  const current=user?.id ?? null;
+  // The first resolved session has nothing to clear; resetting here fetched every query twice.
+  if(previous.current === undefined) { previous.current=current; return; }
+  if(previous.current !== current) {
+   // Leaving an account (sign-out or switch) clears everything it loaded.
+   if(previous.current !== null) void cache.resetQueries();
+   previous.current=current;
   }
- },[user?.id,cache]);
+ },[loading,user?.id,cache]);
  const identity = useQuery({ queryKey: ['identity',user?.id], enabled: !!user, queryFn: ({signal}) => api<{full_name:string;roles:string[];permissions:string[]}>('/auth/me',{signal}) });
  const value: Auth = { user,profile: user ? identity.data : undefined,roles: user && !identity.error ? identity.data?.roles || [] : [],permissions:user && !identity.error ? identity.data?.permissions || [] : [],loading,rolesLoading: !!user && identity.isPending,rolesError: sessionError || identity.error,configured: !!supabase,
   async signIn(email,password) { const {error}=await client().auth.signInWithPassword({email,password});if(error)throw error; },
@@ -34,5 +39,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 // Private page state (open dialogs, drafts, carts) must never survive an account change.
-export function AccountBoundary({children}:{children:ReactNode}) { const {user}=useAuth(); return <div key={user?.id || 'anonymous'} style={{display:'contents'}}>{children}</div>; }
+// The stored session resolving on first load is not an account change: remounting then
+// aborted and repeated every request the page had already started.
+export function AccountBoundary({children}:{children:ReactNode}) {
+ const {user,loading}=useAuth(); const seen=useRef<string|null|undefined>(undefined), generation=useRef(0);
+ if(!loading) { const current=user?.id ?? null; if(seen.current !== undefined && seen.current !== current) generation.current+=1; seen.current=current; }
+ return <div key={generation.current} style={{display:'contents'}}>{children}</div>;
+}
 export function useAuth() { const value=useContext(Context);if(!value)throw new Error('AuthProvider missing');return value; }

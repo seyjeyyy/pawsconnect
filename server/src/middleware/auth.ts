@@ -7,29 +7,44 @@ declare global {
     interface Request { actor?: { id: string; email?: string; roles: string[]; permissions?: string[] }; }
   }
 }
-export const authenticate: RequestHandler = async (req, _res, next) => {
+type Actor = NonNullable<Express.Request['actor']>;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const bearerToken = (header: string | undefined) => /^Bearer ([^\s]+)$/i.exec(header || '')?.[1];
+// The token check, session check and access lookups are independent, so they run
+// together: one network wait instead of three in a row. The lookups are keyed by
+// the token's unverified claims and are discarded unless getUser confirms the
+// token and returns the same account, so an unverified claim is never trusted.
+export async function loadActor(token: string): Promise<Actor> {
   const client = db();
-  const match = /^Bearer ([^\s]+)$/i.exec(req.headers.authorization || '');
-  if (!match) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue.');
-  const { data, error } = await client.auth.getUser(match[1]);
-  if (error || !data.user) throw new ApiError(401, 'INVALID_SESSION', 'Your session has expired. Please sign in again.');
-  // getUser validates the JWT before any claim is read. A signed but revoked
-  // session must not survive in either the service-role API or direct RLS reads.
-  let sessionId: string | null = null;
-  try { sessionId = JSON.parse(Buffer.from(match[1].split('.')[1], 'base64url').toString('utf8')).session_id; } catch { /* reject below */ }
-  if (typeof sessionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) throw new ApiError(401,'INVALID_SESSION','Sign in again to establish a current session.');
-  const sessionAllowed=assertDb(await client.rpc('account_session_allowed',{p_user_id:data.user.id,p_session_id:sessionId}));
-  if(!sessionAllowed) throw new ApiError(401,'SESSION_REVOKED','This session no longer has platform access. Sign in again or contact support.');
-  const [membershipResult, permissionResult] = await Promise.all([
-    client.from('user_roles').select('roles(name)').eq('user_id', data.user.id),
-    client.rpc('account_permissions',{p_user_id:data.user.id}),
+  let claims: { sub?: unknown; session_id?: unknown } = {};
+  try { claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')); } catch { /* reject below */ }
+  const { sub, session_id: sessionId } = claims;
+  if (typeof sub !== 'string' || !uuidPattern.test(sub) || typeof sessionId !== 'string' || !uuidPattern.test(sessionId)) {
+    // Malformed claims: still let the provider decide whether the token itself is valid.
+    const { data, error } = await client.auth.getUser(token);
+    if (error || !data.user) throw new ApiError(401, 'INVALID_SESSION', 'Your session has expired. Please sign in again.');
+    throw new ApiError(401, 'INVALID_SESSION', 'Sign in again to establish a current session.');
+  }
+  const [verified, sessionResult, membershipResult, permissionResult] = await Promise.all([
+    client.auth.getUser(token),
+    client.rpc('account_session_allowed', { p_user_id: sub, p_session_id: sessionId }),
+    client.from('user_roles').select('roles(name)').eq('user_id', sub),
+    client.rpc('account_permissions', { p_user_id: sub }),
   ]);
+  if (verified.error || !verified.data.user || verified.data.user.id !== sub) throw new ApiError(401, 'INVALID_SESSION', 'Your session has expired. Please sign in again.');
+  // A signed but revoked session must not survive in either the service-role API or direct RLS reads.
+  if (!assertDb(sessionResult)) throw new ApiError(401, 'SESSION_REVOKED', 'This session no longer has platform access. Sign in again or contact support.');
   const memberships = assertDb<{ roles: { name: string } | { name: string }[] | null }[]>(membershipResult);
   const roles = memberships.flatMap(row => {
     const role = row.roles;
     return Array.isArray(role) ? role.map(r => r.name) : role ? [role.name] : [];
   });
-  req.actor = { id: data.user.id, email: data.user.email, roles, permissions: assertDb<string[]>(permissionResult) ?? [] };
+  return { id: sub, email: verified.data.user.email, roles, permissions: assertDb<string[]>(permissionResult) ?? [] };
+}
+export const authenticate: RequestHandler = async (req, _res, next) => {
+  const token = bearerToken(req.headers.authorization);
+  if (!token) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue.');
+  req.actor = await loadActor(token);
   next();
 };
 export const optionalAuth: RequestHandler = async (req, res, next) => {

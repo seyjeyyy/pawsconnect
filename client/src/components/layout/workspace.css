@@ -13,7 +13,7 @@
 .workspace-shell .dashboard-main > .feature-toolbar h1 { font-size: clamp(1.55rem, 3vw, 2.1rem); margin-block: .25rem; }
 .workspace-shell .card { box-shadow: 0 2px 7px #20322a05; border: 1px solid #dfe5de; border-radius: 14px; }
 .workspace-shell .account-sidebar { background: white; border: 1px solid #dfe5de; border-radius: 14px; }
-.workspace-shell .stat-grid { grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: .8rem; }
+.workspace-shell .stat-grid { grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: .8rem; }
 .workspace-shell .stat-card { padding: 1rem; }
 .workspace-shell .stat-card strong { font-size: 1.8rem; }
 .sidebar-container { position: relative; min-width: 0; }
@@ -39,8 +39,48 @@
   .workspace-shell .page { padding-block: 1rem; }
   .workspace-shell .table-actions { flex-wrap: wrap; }
 }
+/* Header shortcuts, breadcrumb and connection state */
+.workspace-header-inner { padding-block: .7rem; }
+.workspace-shortcuts > a, .workspace-shortcuts > button { display: inline-flex; align-items: center; gap: .4rem; min-height: 40px; }
+.workspace-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem 1rem; padding-top: .7rem; }
+.workspace-breadcrumb { padding-top: 0; }
+.workspace-breadcrumb [aria-current] { color: var(--navy); font-weight: 650; }
+.sync-status { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; font-size: .78rem; }
+.workspace-meta .sync-status { width: auto; margin: 0; }
+.sync-status .text-button { font-size: .78rem; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #a8a29e; flex: none; }
+.sync-dot.sync-live { background: var(--green); }
+.sync-dot.sync-warn { background: var(--red); }
+.sync-note { padding: .1rem .55rem; border-radius: 999px; background: var(--tint); color: var(--brown); }
+
+/* Overview figures open the records behind them */
+.workspace-shell .stat-card > span { display: flex; align-items: center; gap: .4rem; }
+.workspace-shell .stat-card > span svg { flex: none; color: var(--orange-dark); }
+.workspace-shell a.stat-card { transition: border-color .15s, box-shadow .15s; }
+.workspace-shell a.stat-card:hover { border-color: var(--orange); box-shadow: 0 4px 14px #20322a12; }
+.stat-skeleton { min-height: 104px; background: linear-gradient(90deg, #eef0ec 25%, #f8f9f6 50%, #eef0ec 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.overview-report > summary { font-weight: 700; color: var(--navy); }
+.overview-report > summary span { margin-left: .5rem; font-weight: 400; }
+.workspace-shell .dashboard-main { display: grid; gap: 1.1rem; align-content: start; }
+.workspace-shell .feature-toolbar .field { display: flex; align-items: center; gap: .5rem; }
+.workspace-shell .feature-toolbar select { min-height: 44px; }
+
 @media (max-width: 700px) {
-  .workspace-header-inner { align-items: flex-start; flex-direction: column; gap: .8rem; }
-  .workspace-shortcuts { justify-content: flex-start; gap: .75rem; }
-  .workspace-user span { max-width: 8rem; }
+  .workspace-shortcuts { flex-wrap: nowrap; gap: .15rem; }
+  /* Icons keep their accessible names; the labels return on wider screens. */
+  .workspace-shortcuts > a span, .workspace-shortcuts > button span, .workspace-shortcuts .tour-link { font-size: 0; gap: 0; }
+  .workspace-shortcuts > a, .workspace-shortcuts > button { min-width: 40px; justify-content: center; }
+  .workspace-brand { font-size: 1.05rem; }
+  .sync-note { display: none; }
+  /* Records stack as labelled cards instead of a table that scrolls sideways. */
+  .record-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .record-table, .record-table tbody, .record-table tr, .record-table td { display: block; }
+  .record-table tr { padding: .8rem 1rem; border-bottom: 1px solid var(--line); }
+  .record-table tr:last-child { border-bottom: 0; }
+  .workspace-shell .record-table td { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; max-width: none; padding: .25rem 0; border: 0; text-align: right; }
+  .record-table td::before { content: attr(data-label); flex: none; font-size: .7rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: left; }
+  .record-table td:last-child { padding-top: .55rem; }
+  .record-table td:last-child::before { content: none; }
+  .record-table .table-actions { justify-content: flex-start; }
+  .workspace-shell .feature-toolbar .dashboard-search { max-width: none; flex-basis: 100%; }
 }

@@ -56,7 +56,9 @@ describe('connected API ownership',()=>{
   expect(result.body.error.code).toBe('DEPLOYMENT_SCHEMA_MISMATCH');
   expect(result.body.error.message).toContain('database upgrade');
   expect(result.body.data).toBeUndefined();
-  expect(state.queries.some(q=>q.table==='profiles'||q.table==='user_roles')).toBe(false);
+  // The role lookup now runs alongside the session check and is discarded on refusal;
+  // what must never happen is the route handler reading account data.
+  expect(state.queries.some(q=>q.table==='profiles')).toBe(false);
  });
  it('allows a password-only system session to run an authorized job',async()=>{
   await request(app).post('/api/admin/operations/jobs/run').set('Authorization',`Bearer ${tokenFor(ids.super)}`).send({kind:'retention'}).expect(200);

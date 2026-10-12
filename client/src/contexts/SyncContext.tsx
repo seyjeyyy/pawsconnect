@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -9,7 +10,7 @@ const Context = createContext('Connecting');
 export function SyncProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const cache = useQueryClient();
-  const [connection, setConnection] = useState('Periodic refresh');
+  const [connection, setConnection] = useState('Updates on refresh');
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
     const update = (event: Event) => { setOnline(navigator.onLine); if (!navigator.onLine) return;
@@ -20,8 +21,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return () => { window.removeEventListener('pawsconnect:changed', update); window.removeEventListener('online', update); window.removeEventListener('offline', update); };
   }, [cache]);
   useEffect(() => {
-    if (!supabase || !user) { setConnection('Periodic refresh'); return; }
-    let active = true;
+    if (!supabase || !user) { setConnection('Updates on refresh'); return; }
+    let active = true, joined = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Subscribe only to INSERT/UPDATE: DELETE events cannot be checked against RLS.
     const refresh = (payload?: {new?:Record<string,unknown>}) => {
@@ -40,8 +41,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, refresh)
       .subscribe(status => {
         if (!active) return;
-        setConnection(status === 'SUBSCRIBED' ? 'Live updates with periodic refresh' : 'Periodic refresh · live connection unavailable');
-        if (status === 'SUBSCRIBED') refresh();
+        setConnection(status === 'SUBSCRIBED' ? 'Live updates' : 'Updates every minute · live connection unavailable');
+        // The page has just loaded its own data when the channel first joins. Only a
+        // reconnection can have missed a notification and needs a catch-up refresh.
+        if (status === 'SUBSCRIBED') { if (joined) refresh(); joined = true; }
       });
     return () => { active = false; clearTimeout(timer); void supabase!.removeChannel(channel); };
   }, [user?.id, cache]);
@@ -60,5 +63,6 @@ export function SyncStatus() {
   const cache = useQueryClient();
   const health = useQuery({ queryKey: ['health'], queryFn: ({signal}) => api<{ payment_mode: string }>('/health',{signal}) });
   const failed = cache.getQueryCache().getAll().some(query => query.isActive() && query.state.status === 'error');
-  return <div className="container small muted" role="status">{state}{fetching ? ' · refreshing' : failed ? ' · some records could not be refreshed' : ''} <button className="text-button" onClick={() => void cache.invalidateQueries()}>Refresh</button>{health.data?.payment_mode === 'test' && <span> · Stripe test mode: no real money moves.</span>}</div>;
+  const tone = state.startsWith('Offline') || failed ? 'warn' : state.startsWith('Live') ? 'live' : 'idle';
+  return <div className="container small muted sync-status" role="status"><span className={`sync-dot sync-${tone}`} aria-hidden="true" /><span>{state}{fetching ? ' · refreshing' : failed ? ' · some records could not be refreshed' : ''}</span><button className="text-button" onClick={() => void cache.invalidateQueries()}><RefreshCw size={13} />Refresh</button>{health.data?.payment_mode === 'test' && <span className="sync-note">Stripe test mode: no real money moves.</span>}</div>;
 }
