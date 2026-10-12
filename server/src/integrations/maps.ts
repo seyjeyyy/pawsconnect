@@ -8,6 +8,8 @@ export type RouteResult = { distance_meters: number; duration_seconds: number; g
 /** Address search and routing sit behind this interface so the provider can be swapped without touching routes or the client. */
 export interface MapProvider {
   geocode(address: string): Promise<GeocodeResult[]>;
+  /** The address the map service has for a point, or null when it has none. A suggestion for a person to confirm, never a verified address. */
+  reverse(point: Point): Promise<string | null>;
   route(origin: Point, destination: Point): Promise<RouteResult>;
 }
 
@@ -55,6 +57,25 @@ export class OpenStreetMapProvider implements MapProvider {
     if (this.cache.size > 500) this.cache.clear();
     this.cache.set(key, { at: Date.now(), results });
     return results;
+  }
+
+  async reverse(point: Point): Promise<string | null> {
+    const key = `reverse:${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`;
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.at < 86_400_000) return cached.results[0]?.address ?? null;
+
+    const query = new URLSearchParams({ lat: String(point.latitude), lon: String(point.longitude), format: 'jsonv2', zoom: '18', addressdetails: '0' });
+    const address = await this.throttled(async () => {
+      let response: Response;
+      try { response = await fetch(`${env.NOMINATIM_URL}/reverse?${query}`, { headers: this.headers, signal: AbortSignal.timeout(10000) }); }
+      catch { throw new ApiError(502, 'MAPS_UNAVAILABLE', 'The address service is temporarily unavailable. Please try again.'); }
+      if (!response.ok) throw new ApiError(502, 'MAPS_UNAVAILABLE', 'The address service could not look up this point. Please try again.');
+      const json = await response.json().catch(() => null) as { display_name?: string } | null;
+      return json?.display_name?.trim() || null;
+    });
+    if (this.cache.size > 500) this.cache.clear();
+    this.cache.set(key, { at: Date.now(), results: address ? [{ address, latitude: point.latitude, longitude: point.longitude, place_id: key }] : [] });
+    return address;
   }
 
   async route(origin: Point, destination: Point): Promise<RouteResult> {

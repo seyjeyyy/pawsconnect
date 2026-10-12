@@ -13,6 +13,7 @@ import { commerceRouter } from './modules/orders/routes.js';
 import { paymentRouter, webhookRouter } from './modules/payments/routes.js';
 import { catalogRouter } from './modules/products/routes.js';
 import { rescueRouter } from './modules/rescue/routes.js';
+import { shelterRouter } from './modules/shelter/location.js';
 import { transportRouter } from './modules/transport/routes.js';
 import { userRouter } from './modules/users/routes.js';
 import { connectedRouter } from './modules/users/connected.js';
@@ -46,7 +47,7 @@ export function createApp() {
   api.use(['/contact', '/newsletter'], formLimiter);
   // Stray reports may be anonymous, so they get the same abuse limit as the other public forms.
   api.post('/stray-reports', formLimiter);
-  api.use('/maps', mapsLimiter);
+  api.use(['/maps', '/settings/shelter-location/address-lookup'], mapsLimiter);
   api.use('/operations/worker', operationsWorkerRouter);
   api.use(operationsPublicRouter);
   api.use('/admin/operations', operationsRouter);
@@ -57,6 +58,7 @@ export function createApp() {
   // are mounted last (and the role-gated admin router under its own prefix).
   api.use(catalogRouter);
   api.use(geoRouter);
+  api.use(shelterRouter);
   api.use(matchmakingRouter);
   api.use(rescueRouter);
   api.use(userRouter);

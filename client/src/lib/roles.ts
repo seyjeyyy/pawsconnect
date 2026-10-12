@@ -13,8 +13,10 @@ export const isStaffRole = (roles: string[]) => roles.some(role => staff.include
 /** Anyone whose account exists to do shelter work. They land in the workspace, not the customer dashboard. */
 export const isOperational = (roles: string[]) => roles.some(role => staff.includes(role) || field.includes(role));
 
-const systemSections = ['security', 'security_alerts', 'security_events', 'critical_approvals', 'users', 'audit_logs'];
-const staffSections = ['overview', 'payments', 'refunds', 'reviews', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
+const systemSections = ['security', 'security_alerts', 'security_events', 'critical_approvals', 'users', 'audit_logs', 'shelter_location'];
+// Settings that only an administrator or the super administrator may open.
+const administratorSections = ['shelter_location'];
+const staffSections = ['overview', 'payments', 'refunds', 'reviews', 'products', 'categories', 'orders', 'pets', 'health', 'adoptions', 'rescue', 'transport', 'alternatives', 'zones', 'shelter_location', 'vehicles', 'drivers', 'donations', 'volunteers', 'expenses', 'contact_messages'];
 const fieldSections: Record<string, string[]> = {
   veterinarian: ['pets', 'health'],
   rescue_personnel: ['rescue'],
@@ -26,12 +28,13 @@ const fieldSections: Record<string, string[]> = {
 /** Workspace sections this account may open, in menu order. Empty means no workspace access. */
 export function workspaceSections(roles: string[], permissions?: string[]): string[] {
   // An account holding both kinds of role gets both sets; the demo accounts hold one each.
-  const sections = [
+  const administrator = roles.includes('administrator') || roles.includes('super_administrator');
+  const sections = [...new Set([
     ...(roles.includes('super_administrator') ? systemSections : []),
     ...(roles.includes('administrator') || roles.includes('shelter_staff') ? staffSections : []),
-  ];
+  ])].filter(section => administrator || !administratorSections.includes(section));
   const available = sections.length ? sections : [...new Set(roles.flatMap(role => fieldSections[role] ?? []))];
-  return permissions === undefined ? available : available.filter(section => systemSections.includes(section) || (section === 'overview' ? permissions.length > 0 : (sectionPermissions[section] || []).some(p=>permissions.includes(p))));
+  return permissions === undefined ? available : available.filter(section => (roles.includes('super_administrator') && systemSections.includes(section)) || (section === 'overview' ? permissions.length > 0 : (sectionPermissions[section] || []).some(p=>permissions.includes(p))));
 }
 
 export const sectionPermissions: Record<string,string[]> = {
@@ -39,7 +42,7 @@ export const sectionPermissions: Record<string,string[]> = {
   transport:['transport.manage','transport.assigned'],alternatives:['transport.manage'],vehicles:['transport.manage'],drivers:['transport.manage'],
   products:['store.manage'],categories:['store.manage'],orders:['store.manage'],reviews:['store.manage'],
   payments:['finance.manage'],refunds:['finance.manage'],expenses:['finance.manage'],donations:['donations.view'],
-  volunteers:['volunteers.manage'],zones:['zones.view','zones.manage'],contact_messages:['contacts.manage'],
+  volunteers:['volunteers.manage'],zones:['zones.view','zones.manage'],shelter_location:['zones.manage'],contact_messages:['contacts.manage'],
 };
 
 /** Section titles as a field role sees them: their own work, not the shelter's whole list. */

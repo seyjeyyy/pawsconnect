@@ -167,6 +167,15 @@ The hosted checks above describe the earlier release through migration 014. The 
 
 Setup, migration order, controls and rollback limitations are in [OPERATIONS.md](OPERATIONS.md).
 
+## Shelter transport from the official shelter (in progress, not deployed)
+
+A ten-step change so that every shelter transport request starts at the shelter and the customer only chooses the destination. Done so far:
+
+- **Step 1, official shelter location (migration 020, not yet applied to the live database).** One record in `shelter_locations` (`PAWSCONNECT_MAIN_SHELTER`, 15.017163, 120.948071) is the only place the shelter's coordinates and address live. `GET /api/shelter-location` is public and cached for a minute; `server/src/modules/shelter/location.ts` exports `shelterLocation()` for other modules. It is changed only by `update_shelter_location`, which an administrator holding the zones module or the super administrator may call through `PUT /api/settings/shelter-location`; each change needs a reason and writes the before and after values to the audit trail. The address starts empty: the settings screen (Workspace → Settings → Shelter location) offers a suggestion from the map service, and saving an address is what confirms it. No other shelter coordinate or street address existed in the code to remove.
+- This is the one screen both lines of authority can open. It does not give the super administrator any other shelter route.
+
+Still to do: the form, routing, coverage, estimate, submit, staff and driver views (steps 2–10). Until step 5, coverage still requires the pickup to be inside a transport zone, and the official coordinates have not been checked against the demo zones.
+
 ## Not built
 
 - Refunds stop at the request. A customer can ask and staff can see it; nothing calls Stripe to refund, and there is no approve or decline action.

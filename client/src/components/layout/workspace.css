@@ -70,7 +70,13 @@
   /* Icons keep their accessible names; the labels return on wider screens. */
   .workspace-shortcuts > a span, .workspace-shortcuts > button span, .workspace-shortcuts .tour-link { font-size: 0; gap: 0; }
   .workspace-shortcuts > a, .workspace-shortcuts > button { min-width: 40px; justify-content: center; }
-  .workspace-brand { font-size: 1.05rem; }
+  .workspace-brand { font-size: 1.05rem; min-width: 0; }
+  /* Five shortcuts and the brand must share a 320–375px row: the brand gives way first. */
+  .workspace-header-inner { gap: .5rem; }
+  .workspace-shortcuts { flex: none; }
+  .workspace-brand > svg { flex: none; }
+  .workspace-brand > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-brand small { overflow: hidden; text-overflow: ellipsis; }
   .sync-note { display: none; }
   /* Records stack as labelled cards instead of a table that scrolls sideways. */
   .record-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
