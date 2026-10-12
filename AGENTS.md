@@ -109,7 +109,7 @@ npm run build
 - `npm test` is forced into preview mode by `vitest.config.ts` (blank Supabase and Stripe variables), so it never touches live services even when `server/.env` exists. Keep it that way. Database tests run the real migrations on PGlite with PostGIS; `tests/helpers/db.ts` adds the pieces of Supabase the schema depends on.
 - `npm run test:e2e` starts its own preview-mode API and web server on separate ports, so it is safe on a configured machine. It checks that the app is honest when the database is unavailable; it does not exercise signed-in flows.
 - Applying a migration to the live database: a person pastes it into the Supabase SQL editor. For several at once, concatenate them inside `begin; ... commit;` into `supabase/APPLY_<range>.sql` (git-ignored) so it is one paste and one transaction. Apply migrations before deploying code that needs them.
-- Deploy: `npx vercel build --prod` then `npx vercel deploy --prebuilt --prod`. Pushing to GitHub does not deploy; the two are not linked.
+- Deploy: `npm run deploy` (builds, deploys the prebuilt output, and records the commit, branch, date and notes shown under IT Operations → Deployments; it refuses to run with uncommitted changes). Pushing to GitHub does not deploy; the two are not linked.
 - Local Stripe webhooks: `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed --forward-to localhost:4000/api/webhooks/stripe`.
 
 ## Live data

@@ -4,6 +4,7 @@ import { db } from '../../config/supabase.js';
 import { authenticate } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { pagination, safeSearch, uuid } from '../../utils/validation.js';
+import { emailUser } from '../../integrations/email.js';
 
 export const connectedRouter = Router();
 connectedRouter.use(authenticate);
@@ -47,5 +48,7 @@ connectedRouter.delete('/favorite-pets/:id', async (req, res) => {
 });
 connectedRouter.post('/refund-requests', async (req, res) => {
   const input = z.object({ payment_id: uuid, reason: z.string().min(10).max(2000) }).strict().parse(req.body);
-  res.status(201).json({ data: assertDb(await db().rpc('request_refund', { p_actor_id: req.actor!.id, p_payment_id: input.payment_id, p_reason: input.reason })) });
+  const data = assertDb(await db().rpc('request_refund', { p_actor_id: req.actor!.id, p_payment_id: input.payment_id, p_reason: input.reason }));
+  emailUser(req.actor!.id, { subject: 'We received your refund request', lines: ['Your refund request has been recorded and is waiting for review by shelter staff.', 'A request is not a refund: you will be told the outcome once it has been reviewed.'], link: { label: 'View your refund requests', path: '/account/refunds' } });
+  res.status(201).json({ data });
 });

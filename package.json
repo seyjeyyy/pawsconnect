@@ -16,7 +16,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "start": "npm run start -w server"
+    "start": "npm run start -w server",
+    "deploy": "node scripts/deploy.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

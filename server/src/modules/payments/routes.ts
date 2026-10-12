@@ -1,3 +1,4 @@
+import { emailUser, pesos } from '../../integrations/email.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { env, integrations } from '../../config/env.js';
@@ -82,5 +83,9 @@ webhookRouter.post('/stripe', async (req, res) => {
     p_currency: session.currency.toUpperCase(),
     p_status: paid ? 'paid' : 'failed',
   }));
+  // Sent only after the provider-verified settlement above succeeded.
+  if (paid) emailUser(transaction.user_id, transaction.resource_type === 'donation'
+    ? { subject: 'Your donation receipt', lines: [`Thank you. We received your donation of ${pesos(session.amount_total)} on ${new Intl.DateTimeFormat('en-PH', { dateStyle: 'long', timeZone: 'Asia/Manila' }).format(new Date())}.`, `Payment reference: ${session.payment_intent}.`, ...(stripeLiveMode() ? [] : ['This was a test-mode payment. No real money moved.'])], link: { label: 'View your donations', path: '/account/donations' } }
+    : { subject: 'Payment received', lines: [`We received your payment of ${pesos(session.amount_total)} for your ${transaction.resource_type === 'order' ? 'order' : transaction.resource_type === 'adoption' ? 'adoption fee' : 'transport request'}.`, `Payment reference: ${session.payment_intent}.`, ...(stripeLiveMode() ? [] : ['This was a test-mode payment. No real money moved.'])], link: { label: 'View your payments', path: '/account/payments' } });
   res.json({ data: result });
 });

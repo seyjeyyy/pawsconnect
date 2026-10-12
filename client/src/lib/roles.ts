@@ -56,8 +56,9 @@ export const fieldStatusOptions: Record<string, string[]> = {
   transport: ['picked_up', 'in_transit', 'arrived'],
 };
 
-/** One of three primary experiences; specialties remain operational assignments. */
-export const roleTitle = (roles: string[]) => roles.includes('super_administrator') ? 'Super administrator' : isOperational(roles) ? 'Staff' : 'User';
+/** The label shown for an account: its most senior role. Community roles are simply "User". */
+const roleLabels: [string, string][] = [['super_administrator', 'Super administrator'], ['administrator', 'Administrator'], ['shelter_staff', 'Shelter staff'], ['veterinarian', 'Veterinarian'], ['rescue_personnel', 'Rescue personnel'], ['shelter_driver', 'Shelter driver'], ['volunteer', 'Volunteer']];
+export const roleTitle = (roles: string[]) => roleLabels.find(([role]) => roles.includes(role))?.[1] ?? 'User';
 
 /** Where "my account" leads for this account. */
 export const homePath = (roles: string[], permissions?:string[]) => isOperational(roles) ? (workspaceSections(roles,permissions).length ? `/admin/${workspaceSections(roles,permissions)[0]}` : '/account/profile') : roles.includes('volunteer') ? '/account/volunteer' : '/account/overview';

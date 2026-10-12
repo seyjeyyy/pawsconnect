@@ -60,10 +60,12 @@ operationsRouter.get('/overview',async(req,res)=>{
  const diagnostics=assertDb(await db().rpc('operations_diagnostics',{p_actor_id:req.actor!.id}));
  const databaseLatency=Math.round(performance.now()-start);
  const config=await readOperationsConfig();
- res.json({data:{checked_at:new Date().toISOString(),database:{status:'reachable',latency_ms:databaseLatency,...diagnostics},config,
-  integrations:{supabase:'reachable',authentication:'verified for this session',stripe:integrations.stripe?'configured; connectivity not probed':'unconfigured',maps:'configured; connectivity not probed',email:'delivery worker not configured',notifications:'database + Realtime; delivery acknowledgments unavailable'},
+ // Signals are failures recorded by the API itself. Unreviewed ones need attention even when no incident was opened.
+ const openSignals=await db().from('operations_signals').select('id',{count:'exact',head:true}).eq('status','open');assertDb(openSignals);
+ res.json({data:{checked_at:new Date().toISOString(),open_signals:openSignals.count??0,database:{status:'reachable',latency_ms:databaseLatency,...diagnostics},config,
+  integrations:{supabase:'reachable',authentication:'verified for this session',stripe:integrations.stripe?'configured; connectivity not probed':'unconfigured',maps:'configured; connectivity not probed',email:integrations.resend?'configured; sends on order, adoption, rescue, refund and donation updates; delivery not probed':'not configured: set RESEND_API_KEY and RESEND_FROM in the deployment environment',notifications:'database + Realtime; delivery acknowledgments unavailable'},
   worker_kinds:configuredWorkerKinds(),
-  deployment:{commit:env.RELEASE_COMMIT || env.VERCEL_GIT_COMMIT_SHA || null,date:env.RELEASE_DATE || null,environment:env.VERCEL_ENV || env.NODE_ENV,notes:env.RELEASE_NOTES || null,history_available:false,rollback:'Requires a tested release artifact and migration compatibility review'},
+  deployment:{commit:env.RELEASE_COMMIT || env.VERCEL_GIT_COMMIT_SHA || null,branch:env.RELEASE_BRANCH || env.VERCEL_GIT_COMMIT_REF || null,date:env.RELEASE_DATE || null,environment:env.VERCEL_ENV || env.NODE_ENV,region:env.VERCEL_REGION || null,deployment_id:env.VERCEL_DEPLOYMENT_ID || null,notes:env.RELEASE_NOTES || env.VERCEL_GIT_COMMIT_MESSAGE || null,history_available:false,rollback:'Requires a tested release artifact and migration compatibility review'},
   unavailable:['Provider CPU and memory limits','Storage bytes and growth history','Auth provider sign-in events','Database query duration samples and index recommendations'],
  }});
 });

@@ -6,6 +6,7 @@ import { ApiError, assertDb } from '../../utils/errors.js';
 import { money, pagination, safeSearch, uuid } from '../../utils/validation.js';
 import { connectedAdminRouter } from './connected.js';
 import { workspacePermissions } from '../../middleware/permissions.js';
+import { emailOwner, pesos, readable } from '../../integrations/email.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -112,11 +113,17 @@ adminRouter.post('/inventory', async (req, res) => {
 });
 adminRouter.patch('/orders/:id/status', async (req, res) => {
   const { status } = z.object({ status: z.enum(['processing', 'ready_for_shipment', 'shipped', 'delivered', 'cancelled']), notes: z.string().max(2000).optional() }).strict().parse(req.body);
-  res.json({ data: assertDb(await db().rpc('transition_order', { p_actor_id: req.actor!.id, p_order_id: uuid.parse(req.params.id), p_status: status })) });
+  const id = uuid.parse(req.params.id);
+  const data = assertDb(await db().rpc('transition_order', { p_actor_id: req.actor!.id, p_order_id: id, p_status: status }));
+  emailOwner<{ user_id: string; order_number: string }>(() => db().from('orders').select('user_id,order_number').eq('id', id).maybeSingle(), order => ({ subject: `Your order ${order.order_number} is now ${readable(status)}`, lines: [`Your PawsConnect order ${order.order_number} has been updated to: ${readable(status)}.`], link: { label: 'View your orders', path: '/account/orders' } }));
+  res.json({ data });
 });
 adminRouter.patch('/adoptions/:id/status', async (req, res) => {
   const input = z.object({ status: z.enum(['under_review', 'information_requested', 'interview', 'approved', 'rejected', 'awaiting_handover']), notes: z.string().max(3000).optional() }).strict().parse(req.body);
-  res.json({ data: assertDb(await db().rpc('transition_adoption', { p_actor_id: req.actor!.id, p_application_id: uuid.parse(req.params.id), p_status: input.status, p_notes: input.notes ?? null })) });
+  const id = uuid.parse(req.params.id);
+  const data = assertDb(await db().rpc('transition_adoption', { p_actor_id: req.actor!.id, p_application_id: id, p_status: input.status, p_notes: input.notes ?? null }));
+  emailOwner<{ user_id: string; pets: { name: string } | null }>(() => db().from('adoption_applications').select('user_id,pets(name)').eq('id', id).maybeSingle(), application => ({ subject: `Your adoption application is now ${readable(input.status)}`, lines: [`Your application${application.pets?.name ? ` to adopt ${application.pets.name}` : ''} has been updated to: ${readable(input.status)}.`, 'Open your account to see what happens next.'], link: { label: 'View your applications', path: '/account/applications' } }));
+  res.json({ data });
 });
 adminRouter.post('/adoptions/:id/reserve', async (req, res) => {
   res.json({ data: assertDb(await db().rpc('reserve_pet', { p_actor_id: req.actor!.id, p_application_id: uuid.parse(req.params.id) })) });
@@ -144,7 +151,10 @@ adminRouter.post('/health', async (req, res) => {
 });
 adminRouter.patch('/rescue/:id/status', async (req, res) => {
   const input = z.object({ status: z.enum(['under_verification', 'verified', 'in_progress', 'resolved', 'closed', 'invalid', 'duplicate', 'declined', 'referred']), notes: z.string().max(3000).optional() }).strict().parse(req.body);
-  res.json({ data: assertDb(await db().rpc('transition_rescue', { p_actor_id: req.actor!.id, p_report_id: uuid.parse(req.params.id), p_status: input.status, p_notes: input.notes ?? null })) });
+  const id = uuid.parse(req.params.id);
+  const data = assertDb(await db().rpc('transition_rescue', { p_actor_id: req.actor!.id, p_report_id: id, p_status: input.status, p_notes: input.notes ?? null }));
+  emailOwner<{ user_id: string | null; animal_type: string; city: string }>(() => db().from('stray_reports').select('user_id,animal_type,city').eq('id', id).maybeSingle(), report => ({ subject: `Your rescue report is now ${readable(input.status)}`, lines: [`Your report about a ${report.animal_type} in ${report.city} has been updated to: ${readable(input.status)}.`, 'Thank you for looking out for an animal in need.'], link: { label: 'View your reports', path: '/account/reports' } }));
+  res.json({ data });
 });
 adminRouter.post('/rescue/:id/assign', async (req, res) => {
   const input = z.object({ assignee_id: uuid, notes: z.string().max(2000).optional() }).strict().parse(req.body);
@@ -177,6 +187,7 @@ adminRouter.patch('/donations/:id/status', async (req, res) => {
   const id = uuid.parse(req.params.id);
   const data = assertDb(await db().from('donations').update({ status }).eq('id', id).eq('donation_type', 'in_kind').eq('status', 'pledged').select().single());
   await audit(req.actor!.id, `donation.${status}`, 'donations', id);
+  if (status === 'received') emailOwner<{ user_id: string; description: string | null }>(() => db().from('donations').select('user_id,description').eq('id', id).maybeSingle(), donation => ({ subject: 'We received your donation', lines: [`The shelter has received your donated goods${donation.description ? `: ${donation.description}` : ''}.`, 'Thank you for your kindness.'], link: { label: 'View your donations', path: '/account/donations' } }));
   res.json({ data });
 });
 adminRouter.patch('/volunteers/:id/status', async (req, res) => {

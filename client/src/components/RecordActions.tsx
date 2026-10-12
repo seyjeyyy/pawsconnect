@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {useDebouncedValue} from '../lib/useDebouncedValue';
 import {useConfirmation} from './Confirm';
 import { useState } from 'react';
@@ -55,9 +56,10 @@ export function AdminRecordActions({ resource, row, busy, onAction }: { resource
     {resource === 'refunds' && <p className="notice">This request remains pending until staff process it with the payment provider and reconcile its verified outcome. Saving a request does not issue a refund.</p>}
   </div>;
 }
+const securityCards: Record<string, [string, string?]> = { registered_users: ['Registered accounts', '/admin/users'], administrators: ['Administrators', '/admin/users'], role_assignments: ['Role assignments'], authorization_denials: ['Access denials recorded', '/admin/security_events'], open_alerts: ['Open security alerts', '/admin/security_alerts'], resolved_alerts: ['Resolved security alerts', '/admin/security_alerts'], pending_critical_approvals: ['Access requests awaiting a decision', '/admin/critical_approvals'], audit_events: ['Audit trail entries', '/admin/audit_logs'], open_operational_signals: ['Open system signals', '/admin/operations/integrations'] };
 export function SecuritySummary() {
   const query = useQuery({ queryKey: ['admin','security-summary'], queryFn: ({signal}) => api<Row>('/admin/security-summary',{signal}) });
   if (query.isPending) return <p role="status">Loading recorded security events…</p>;
   if (query.error) return <div role="alert">{query.error.message}<button onClick={() => void query.refetch()}>Retry</button></div>;
-  return <><p>{query.data.source_note}</p><div className="stat-grid">{Object.entries(query.data).filter(([, value]) => typeof value === 'number').map(([key, value]) => <div className="card stat-card" key={key}><span>{key.replaceAll('_',' ')}</span><strong>{value}</strong></div>)}</div></>;
+  return <><p>{query.data.source_note}</p><div className="stat-grid">{Object.entries(query.data).filter(([, value]) => typeof value === 'number').map(([key, value]) => { const [text, to] = securityCards[key] ?? [key.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())]; const attention = Boolean(value) && ['open_alerts', 'open_operational_signals', 'pending_critical_approvals'].includes(key); const body = <><span>{text}</span><strong>{value}</strong></>; return to ? <Link className={`card stat-card${attention ? ' stat-attention' : ''}`} key={key} to={to}>{body}</Link> : <div className="card stat-card" key={key}>{body}</div>; })}</div></>;
 }

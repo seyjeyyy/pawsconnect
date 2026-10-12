@@ -21,3 +21,8 @@
 .confirmation-resource { overflow-wrap:anywhere;padding:.7rem;border-radius:8px;background:var(--cream); }
 @keyframes confirm-in { from {opacity:0;} to {opacity:1;} }
 @media(prefers-reduced-motion:reduce){.confirm-overlay{animation:none;}}
+
+.ops-steps { display: grid; gap: .6rem; padding-left: 1.3rem; list-style: decimal; font-size: .92rem; }
+.ops-steps code, .notice code { padding: .05rem .35rem; border-radius: 6px; background: var(--cream-deep); font-size: .85em; overflow-wrap: anywhere; }
+.stat-card.stat-attention { border-color: var(--red); }
+.stat-card.stat-attention strong { color: #b91c1c; }

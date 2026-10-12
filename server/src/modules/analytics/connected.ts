@@ -35,5 +35,7 @@ connectedAdminRouter.post('/security_alerts/:id/resolve', authorize('super_admin
   res.json({ data: assertDb(await db().rpc('resolve_security_alert', { p_actor_id: req.actor!.id, p_alert_id: uuid.parse(req.params.id), p_notes: notes })) });
 });
 connectedAdminRouter.get('/security-summary', authorize('super_administrator'), async (req, res) => {
-  res.json({ data: assertDb(await db().rpc('security_metrics', { p_actor_id: req.actor!.id })) });
+  const [metrics, openSignals] = await Promise.all([db().rpc('security_metrics', { p_actor_id: req.actor!.id }), db().from('operations_signals').select('id', { count: 'exact', head: true }).eq('status', 'open')]);
+  assertDb(openSignals);
+  res.json({ data: { ...assertDb<Record<string, unknown>>(metrics), open_operational_signals: openSignals.count ?? 0 } });
 });

@@ -1,6 +1,10 @@
 import type { RequestHandler } from 'express';
 import { db } from '../config/supabase.js';
 import { ApiError, assertDb } from '../utils/errors.js';
+import { env } from '../config/env.js';
+
+/** The seeded demonstration accounts, one per role. */
+export const isDemoAccount = (email: string | undefined) => Boolean(email?.toLowerCase().endsWith('@pawsconnect.test'));
 
 declare global {
   namespace Express {
@@ -32,6 +36,7 @@ export async function loadActor(token: string): Promise<Actor> {
     client.rpc('account_permissions', { p_user_id: sub }),
   ]);
   if (verified.error || !verified.data.user || verified.data.user.id !== sub) throw new ApiError(401, 'INVALID_SESSION', 'Your session has expired. Please sign in again.');
+  if (env.DEMO_ACCOUNTS_DISABLED && isDemoAccount(verified.data.user.email)) throw new ApiError(403, 'DEMO_ACCOUNT_DISABLED', 'Demonstration accounts are switched off on this site.');
   // A signed but revoked session must not survive in either the service-role API or direct RLS reads.
   if (!assertDb(sessionResult)) throw new ApiError(401, 'SESSION_REVOKED', 'This session no longer has platform access. Sign in again or contact support.');
   const memberships = assertDb<{ roles: { name: string } | { name: string }[] | null }[]>(membershipResult);

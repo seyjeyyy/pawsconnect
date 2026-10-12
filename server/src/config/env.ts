@@ -37,8 +37,15 @@ export const env = z.object({
   RELEASE_COMMIT: optional,
   RELEASE_DATE: optional,
   RELEASE_NOTES: optional,
+  RELEASE_BRANCH: optional,
   VERCEL_ENV: optional,
   VERCEL_GIT_COMMIT_SHA: optional,
+  VERCEL_GIT_COMMIT_MESSAGE: optional,
+  VERCEL_GIT_COMMIT_REF: optional,
+  VERCEL_REGION: optional,
+  VERCEL_DEPLOYMENT_ID: optional,
+  // Set to true to refuse API access to the seeded demo accounts (*@pawsconnect.test). They are not deleted.
+  DEMO_ACCOUNTS_DISABLED: z.enum(['true', 'false']).optional().transform(value => value === 'true'),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
 }).parse(process.env);
 export const configured = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
