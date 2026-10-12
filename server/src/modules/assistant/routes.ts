@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { Router, type Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
@@ -7,14 +6,10 @@ import { db } from '../../config/supabase.js';
 import { authenticate } from '../../middleware/auth.js';
 import { ApiError, assertDb } from '../../utils/errors.js';
 import { knowledge } from './knowledge.js';
+import { assistantEnabled, ProviderError, streamCompletion, type ChatMessage } from './provider.js';
 import { accountType, suggestionsFor, toolsFor, type Actor } from './tools.js';
 
 export const assistantRouter = Router();
-
-// One provider client per process. The key never leaves the server.
-let provider: Anthropic | undefined;
-const anthropic = () => provider ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 45_000, maxRetries: 1 });
-const enabled = () => Boolean(env.ANTHROPIC_API_KEY);
 
 const chatLimiter = rateLimit({
   windowMs: 5 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false,
@@ -42,7 +37,7 @@ async function recentMessages(userId: string, conversationId: string, count: num
 
 assistantRouter.get('/assistant/bootstrap', authenticate, (req, res) => {
   const actor = req.actor!;
-  res.json({ data: { enabled: enabled(), account_type: accountType(actor.roles), suggestions: suggestionsFor(actor) } });
+  res.json({ data: { enabled: assistantEnabled(), account_type: accountType(actor.roles), suggestions: suggestionsFor(actor) } });
 });
 
 assistantRouter.get('/assistant/messages', authenticate, async (req, res) => {
@@ -89,7 +84,7 @@ const chatInput = z.object({
 
 assistantRouter.post('/assistant/chat', authenticate, chatLimiter, async (req, res) => {
   const actor = req.actor!, input = chatInput.parse(req.body);
-  if (!enabled()) throw new ApiError(503, 'ASSISTANT_UNAVAILABLE', 'The assistant is not set up yet. You can still use every PawsConnect feature normally.');
+  if (!assistantEnabled()) throw new ApiError(503, 'ASSISTANT_UNAVAILABLE', 'The assistant is not set up yet. You can still use every PawsConnect feature normally.');
   if (replying.has(actor.id)) throw new ApiError(409, 'ASSISTANT_BUSY', 'The assistant is still answering your previous message.');
   replying.add(actor.id);
   const abort = new AbortController();
@@ -101,53 +96,49 @@ assistantRouter.post('/assistant/chat', authenticate, chatLimiter, async (req, r
     const history = conversation.available && conversationId ? await recentMessages(actor.id, conversationId, RECENT_MESSAGES) : [];
     while (history.length && history[0].role !== 'user') history.shift();
     const tools = toolsFor(actor);
-    const messages: Anthropic.Beta.BetaMessageParam[] = [...history.map(({ role, content }) => ({ role, content })), { role: 'user' as const, content: input.message }];
+    const messages: ChatMessage[] = [
+      { role: 'system', content: `${knowledge}\n\n${contextFor(actor, assertDb<{ full_name: string } | null>(profile)?.full_name ?? '', input.page)}` },
+      ...history.map(({ role, content }) => ({ role, content })),
+      { role: 'user', content: input.message },
+    ];
 
     res.status(200).set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
     res.flushHeaders();
 
-    let reply = '', inputTokens = 0, outputTokens = 0;
+    let reply = '', inputTokens: number | null = null, outputTokens: number | null = null;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const stream = anthropic().beta.messages.stream({
-        model: env.ASSISTANT_MODEL,
-        max_tokens: 8000,
-        // Short conversational answers: low effort keeps replies quick and inexpensive.
-        output_config: { effort: 'low' },
-        // If the model's safety checks decline a request, the provider retries it on its default fallback model.
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        system: [{ type: 'text', text: knowledge, cache_control: { type: 'ephemeral' } }, { type: 'text', text: contextFor(actor, assertDb<{ full_name: string } | null>(profile)?.full_name ?? '', input.page) }],
-        tools: tools.map(tool => ({ name: tool.name, description: tool.description, input_schema: tool.schema })),
-        messages,
-      }, { signal: abort.signal });
-      stream.on('text', delta => { reply += delta; send(res, 'delta', { text: delta }); });
-      const message = await stream.finalMessage();
-      inputTokens += message.usage.input_tokens + (message.usage.cache_read_input_tokens ?? 0) + (message.usage.cache_creation_input_tokens ?? 0);
-      outputTokens += message.usage.output_tokens;
-      if (message.stop_reason === 'refusal') { if (!reply) { reply = 'I can’t help with that request.'; send(res, 'delta', { text: reply }); } break; }
-      const calls = message.content.filter((block): block is Anthropic.Beta.BetaToolUseBlock => block.type === 'tool_use');
-      if (message.stop_reason !== 'tool_use' || !calls.length || round === MAX_TOOL_ROUNDS) break;
-      messages.push({ role: 'assistant', content: message.content });
-      const results: Anthropic.Beta.BetaToolResultBlockParam[] = await Promise.all(calls.map(async call => {
+      const turn = await streamCompletion({
+        messages, signal: abort.signal,
+        // On the last allowed round no tools are offered, so the model must answer with what it has.
+        tools: round === MAX_TOOL_ROUNDS ? [] : tools.map(tool => ({ name: tool.name, description: tool.description, parameters: tool.schema })),
+        onText: delta => { reply += delta; send(res, 'delta', { text: delta }); },
+      });
+      if (turn.usage.input !== null) inputTokens = (inputTokens ?? 0) + turn.usage.input;
+      if (turn.usage.output !== null) outputTokens = (outputTokens ?? 0) + turn.usage.output;
+      if (!turn.toolCalls.length) break;
+      messages.push({ role: 'assistant', content: turn.text || null, tool_calls: turn.toolCalls });
+      const results = await Promise.all(turn.toolCalls.map(async call => {
         // Looked up in this account's own list: a tool it may not use does not exist for it.
-        const tool = tools.find(candidate => candidate.name === call.name);
-        const parsed = tool?.input.safeParse(call.input);
-        if (!tool || !parsed?.success) return { type: 'tool_result' as const, tool_use_id: call.id, is_error: true, content: 'That lookup is not available for this account or its input was invalid.' };
+        const tool = tools.find(candidate => candidate.name === call.function.name);
+        let parsed: z.SafeParseReturnType<unknown, unknown> | undefined;
+        try { parsed = tool?.input.safeParse(JSON.parse(call.function.arguments || '{}')); } catch { /* invalid JSON is refused below */ }
+        if (!tool || !parsed?.success) return { role: 'tool' as const, tool_call_id: call.id, content: 'That lookup is not available for this account or its input was invalid.' };
         send(res, 'tool', { label: tool.label });
         try {
           const text = JSON.stringify(await tool.run(actor, parsed.data, db()));
-          return { type: 'tool_result' as const, tool_use_id: call.id, content: text.length > MAX_RESULT_CHARS ? `${text.slice(0, MAX_RESULT_CHARS)}… (truncated)` : text };
+          return { role: 'tool' as const, tool_call_id: call.id, content: text.length > MAX_RESULT_CHARS ? `${text.slice(0, MAX_RESULT_CHARS)}… (truncated)` : text };
         } catch (failure) {
           console.error('Assistant tool failed:', tool.name, failure instanceof ApiError ? failure.code : 'INTERNAL_ERROR');
-          return { type: 'tool_result' as const, tool_use_id: call.id, is_error: true, content: 'The information could not be retrieved right now.' };
+          return { role: 'tool' as const, tool_call_id: call.id, content: 'The information could not be retrieved right now.' };
         }
       }));
-      messages.push({ role: 'user', content: results });
+      messages.push(...results);
       if (reply && !reply.endsWith('\n')) { reply += '\n\n'; send(res, 'delta', { text: '\n\n' }); }
     }
 
     reply = reply.trim();
-    if (reply && conversation.available) {
+    if (!reply) throw new ProviderError(null);
+    if (conversation.available) {
       if (!conversationId) conversationId = assertDb<{ id: string }>(await db().from('assistant_conversations').insert({ user_id: actor.id }).select('id').single()).id;
       const now = Date.now();
       assertDb(await db().from('assistant_messages').insert([
@@ -160,11 +151,11 @@ assistantRouter.post('/assistant/chat', authenticate, chatLimiter, async (req, r
     res.end();
   } catch (failure) {
     if (!res.headersSent) throw failure;
-    if (!(failure instanceof Anthropic.APIUserAbortError)) {
+    if (!(failure instanceof ProviderError && failure.aborted)) {
       // Codes only: no provider message, prompt or record content is logged or shown.
-      console.error('Assistant reply failed:', failure instanceof Anthropic.APIError ? `provider ${failure.status ?? 'connection'}` : failure instanceof ApiError ? failure.code : 'INTERNAL_ERROR');
-      const message = failure instanceof Anthropic.RateLimitError ? 'The assistant is busy right now. Please try again in a moment.'
-        : failure instanceof Anthropic.APIError ? 'I’m having trouble responding right now. You can still use the PawsConnect features normally.'
+      console.error('Assistant reply failed:', failure instanceof ProviderError ? `provider ${failure.status ?? 'connection'}` : failure instanceof ApiError ? failure.code : 'INTERNAL_ERROR');
+      const message = failure instanceof ProviderError && failure.status === 429 ? 'The assistant is busy right now. Please try again in a moment.'
+        : failure instanceof ProviderError ? 'I’m having trouble responding right now. You can still use the PawsConnect features normally.'
         : 'I couldn’t finish that answer. Please try again.';
       send(res, 'error', { message });
     }

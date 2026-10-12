@@ -1,4 +1,3 @@
-import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type { db } from '../../config/supabase.js';
 import { isStaff, isSystemAdministrator } from '../../middleware/auth.js';
@@ -10,6 +9,7 @@ import { safeSearch } from '../../utils/validation.js';
 // in code. The model never supplies a user id, a table name or a query.
 export type Actor = { id: string; roles: string[]; permissions?: string[] };
 type Db = ReturnType<typeof db>;
+type JsonSchema = { type: 'object'; properties: Record<string, unknown>; required: string[]; additionalProperties: false };
 export type AssistantTool = {
   name: string;
   /** What the model is told the tool does. */
@@ -17,7 +17,8 @@ export type AssistantTool = {
   /** Shown to the person while the tool runs. */
   label: string;
   input: z.ZodTypeAny;
-  schema: Anthropic.Tool['input_schema'];
+  /** JSON Schema of the input, as shown to the model. `input` is what is enforced. */
+  schema: JsonSchema;
   allowed: (actor: Actor) => boolean;
   run: (actor: Actor, input: any, client: Db) => Promise<unknown>;
 };
@@ -29,7 +30,7 @@ const anyone = () => true;
 const limit = z.number().int().min(1).max(10).default(6);
 const limitSchema = { type: 'integer', minimum: 1, maximum: 10, description: 'How many to return (default 6).' } as const;
 const short = (text: unknown, length = 240) => typeof text === 'string' && text.length > length ? `${text.slice(0, length)}…` : text;
-const object = (properties: Record<string, unknown>, required: string[] = []): Anthropic.Tool['input_schema'] => ({ type: 'object', properties, required, additionalProperties: false });
+const object = (properties: Record<string, unknown>, required: string[] = []): JsonSchema => ({ type: 'object', properties, required, additionalProperties: false });
 
 const myRecordKinds = ['adoption_applications', 'orders', 'rescue_reports', 'donations', 'transport_requests', 'payments', 'notifications'] as const;
 const myRecords: Record<typeof myRecordKinds[number], { path: string; read: (client: Db, userId: string) => PromiseLike<any> }> = {
