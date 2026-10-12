@@ -173,8 +173,14 @@ A ten-step change so that every shelter transport request starts at the shelter 
 
 - **Step 1, official shelter location (migration 020, not yet applied to the live database).** One record in `shelter_locations` (`PAWSCONNECT_MAIN_SHELTER`, 15.017163, 120.948071) is the only place the shelter's coordinates and address live. `GET /api/shelter-location` is public and cached for a minute; `server/src/modules/shelter/location.ts` exports `shelterLocation()` for other modules. It is changed only by `update_shelter_location`, which an administrator holding the zones module or the super administrator may call through `PUT /api/settings/shelter-location`; each change needs a reason and writes the before and after values to the audit trail. The address starts empty: the settings screen (Workspace → Settings → Shelter location) offers a suggestion from the map service, and saving an address is what confirms it. No other shelter coordinate or street address existed in the code to remove.
 - This is the one screen both lines of authority can open. It does not give the super administrator any other shelter route.
+- **Step 2, pickup is always the shelter.** `POST /api/transport/requests` takes the pickup from the shelter record and saves it on the request; pickup values in the request body are accepted and never used. The Shelter transport tab shows a read-only pickup card (`client/src/components/ShelterPickup.tsx`) and sends only the destination. `POST /api/maps/shelter-route` previews the route from the shelter; `/api/geofencing/transport-coverage` uses the shelter whatever origin it is sent. The Alternative request tab is unchanged. Migration 020 was applied to the live database on 2026-10-12.
 
-Still to do: the form, routing, coverage, estimate, submit, staff and driver views (steps 2–10). Until step 5, coverage still requires the pickup to be inside a transport zone, and the official coordinates have not been checked against the demo zones.
+Still to do: the form, routing, coverage, estimate, submit, staff and driver views (steps 3–10).
+
+Two things that hold until step 5 and real zones exist:
+
+- The database still classifies coverage from both ends, and the shelter (15.017163, 120.948071) is not inside any transport zone, so every new shelter transport request is saved as outside coverage and cannot be quoted or scheduled.
+- `check_service_eligibility` deliberately ignores zones whose name or source starts with "demo" (migration 010), and the three demo zones are the only zones. The live site therefore has no transport, rescue or delivery coverage anywhere until real zones are entered.
 
 ## Not built
 
