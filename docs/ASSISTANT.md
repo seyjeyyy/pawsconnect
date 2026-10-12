@@ -16,7 +16,8 @@ Without a key the chat button still appears for signed-in accounts and the panel
 | --- | --- | --- |
 | `ASSISTANT_API_KEY` | none | Server only. Never put it in a `VITE_` variable. |
 | `ASSISTANT_BASE_URL` | Gemini's OpenAI-compatible endpoint | Base URL of the provider's OpenAI-style API, without `/chat/completions`. |
-| `ASSISTANT_MODEL` | `gemini-2.5-flash` | Model id as the provider names it. It must support function calling. |
+| `ASSISTANT_REASONING_EFFORT` | none | Optional `low`, `medium` or `high`, sent as `reasoning_effort`. `low` keeps Gemini replies quick. Leave unset for models that reject it. |
+| `ASSISTANT_MODEL` | `gemini-3.5-flash` | Model id as the provider names it. It must support function calling. Providers retire models; when this one is retired the panel reports trouble responding until a current id is set. |
 | `ASSISTANT_RETENTION_DAYS` | `90` | Messages older than this are deleted the next time their owner opens the assistant. |
 
 ## Providers

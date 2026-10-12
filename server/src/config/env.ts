@@ -23,7 +23,9 @@ export const env = z.object({
   // Any provider with an OpenAI-style chat completions API (Gemini, Groq, OpenRouter…). See docs/ASSISTANT.md.
   ASSISTANT_API_KEY: optional,
   ASSISTANT_BASE_URL: serviceUrl('https://generativelanguage.googleapis.com/v1beta/openai'),
-  ASSISTANT_MODEL: z.string().optional().transform(value => value?.trim() || 'gemini-2.5-flash'),
+  ASSISTANT_MODEL: z.string().optional().transform(value => value?.trim() || 'gemini-3.5-flash'),
+  // Sent as `reasoning_effort` when set. Leave empty for providers or models that do not accept it.
+  ASSISTANT_REASONING_EFFORT: optional,
   ASSISTANT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   RESEND_API_KEY: optional,
   RESEND_FROM: optional,

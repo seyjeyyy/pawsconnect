@@ -4,7 +4,8 @@ import { env } from '../../config/env.js';
 // API with function calling and streaming: Google Gemini, Groq, OpenRouter and others.
 // Which one is a matter of three settings (ASSISTANT_BASE_URL, ASSISTANT_API_KEY,
 // ASSISTANT_MODEL); see docs/ASSISTANT.md. The key never leaves the server.
-export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+// `extra_content` carries provider data that must be returned unchanged with the call (Gemini's thought signature).
+export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string }; extra_content?: unknown };
 export type ChatMessage =
   | { role: 'system' | 'user'; content: string }
   | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
@@ -26,17 +27,21 @@ function portable(schema: unknown): unknown {
 
 /** One streamed model turn. Text is passed to `onText` as it arrives; tool calls are returned whole. */
 export async function streamCompletion(input: { messages: ChatMessage[]; tools: ToolDefinition[]; signal: AbortSignal; onText: (delta: string) => void }) {
-  const signal = AbortSignal.any([input.signal, AbortSignal.timeout(45_000)]);
-  let response: Response;
-  try {
-    response = await fetch(`${env.ASSISTANT_BASE_URL}/chat/completions`, {
+  const signal = AbortSignal.any([input.signal, AbortSignal.timeout(30_000)]);
+  const request = () => fetch(`${env.ASSISTANT_BASE_URL}/chat/completions`, {
       method: 'POST', signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.ASSISTANT_API_KEY}` },
       body: JSON.stringify({
-        model: env.ASSISTANT_MODEL, stream: true, max_tokens: 2000, messages: input.messages,
+        model: env.ASSISTANT_MODEL, stream: true, stream_options: { include_usage: true }, max_tokens: 2000, messages: input.messages,
+        ...(env.ASSISTANT_REASONING_EFFORT ? { reasoning_effort: env.ASSISTANT_REASONING_EFFORT } : {}),
         ...(input.tools.length ? { tools: input.tools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: portable(tool.parameters) } })) } : {}),
       }),
     });
+  let response: Response;
+  try {
+    response = await request();
+    // Free tiers are often briefly overloaded. Nothing has been shown yet, so one quiet retry is safe.
+    if (response.status === 503 || response.status === 500) { await response.body?.cancel().catch(() => {}); response = await request(); }
   } catch { throw new ProviderError(null, input.signal.aborted); }
   if (!response.ok || !response.body) { await response.body?.cancel().catch(() => {}); throw new ProviderError(response.status); }
 
@@ -62,6 +67,7 @@ export async function streamCompletion(input: { messages: ChatMessage[]; tools: 
           const index = typeof part.index === 'number' ? part.index : calls.length;
           const call = calls[index] ??= { id: '', type: 'function', function: { name: '', arguments: '' } };
           if (part.id) call.id = part.id;
+          if (part.extra_content) call.extra_content = part.extra_content;
           if (part.function?.name) call.function.name = part.function.name;
           if (typeof part.function?.arguments === 'string') call.function.arguments += part.function.arguments;
         }

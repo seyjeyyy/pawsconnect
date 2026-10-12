@@ -34,7 +34,7 @@ async function fixture(page: Page, reply: (body: any) => { status?: number; fram
   });
   return { calls, sent };
 }
-const answer = { frames: [['tool', { label: 'Checking your records' }], ['delta', { text: 'Your application is **Under review**. See [your applications](/account/applications). <img src=x onerror=alert(1)> [bad](https://example.test/x)' }], ['done', { saved: true }]] as [string, unknown][] };
+const answer = { frames: [['tool', { label: 'Checking your records' }], ['delta', { text: 'Your application is **Under review**. See **[your applications](/account/applications)**. <img src=x onerror=alert(1)> [bad](https://example.test/x)' }], ['done', { saved: true }]] as [string, unknown][] };
 
 test('the assistant loads nothing until opened, then answers and links inside the app', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));

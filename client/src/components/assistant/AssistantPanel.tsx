@@ -18,9 +18,10 @@ const welcome: Record<Bootstrap['account_type'], string> = {
 
 /** Assistant text is rendered as plain React nodes: bold, lists and links only, never HTML. */
 function inline(text: string, onNavigate: () => void): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\))/g).map((part, index) => {
-    const bold = /^\*\*([^*]+)\*\*$/.exec(part);
-    if (bold) return <strong key={index}>{bold[1]}</strong>;
+  return text.split(/(\*\*.+?\*\*|\[[^\]]+\]\([^)\s]+\))/g).map((part, index) => {
+    const bold = /^\*\*(.+)\*\*$/.exec(part);
+    // Models often wrap a link in bold, so the inside of a bold run is parsed again.
+    if (bold) return <strong key={index}>{inline(bold[1], onNavigate)}</strong>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
     if (!link) return part;
     // Only in-app paths become links; anything else stays as readable text.
