@@ -1,5 +1,15 @@
 # Build status
 
+Database check, 2026-10-12 18:30 Manila (read-only against the live database; nothing was changed there):
+
+- The live schema has every table, column and function the server names, through migration 022 (`npm run check:live`, new). All 106 literal selects the server makes, embeds included, run without error against it.
+- The live site runs the vouchers and loyalty release. Migrations 020, 021 and 022 are applied.
+- Records agree with each other: order totals equal their items, every paid order, adoption fee, transport fee and donation has exactly one paid payment of the same amount, reserved stock equals what unpaid orders hold, every payment points at an existing record, all 13 accounts have a profile and the four community roles, and the one reserved pet has the one approved application.
+- The workspace and security figures equal direct counts of the tables.
+- Nine recorded signals are open and none is recurring: six `DEPLOYMENT_SCHEMA_MISMATCH` from account pages between 15:16 and 15:27 Manila on 12 Oct (code that needed a migration ran before it was applied), two `RENDER_ERROR` and one `UNHANDLED_ERROR` from browsers. They need a super administrator's review with notes.
+- The three service zones were renamed "Malolos area ... zone (sample boundary)" on 12 Oct and now count for coverage. They are one rectangle (120.76 to 120.88 east, 14.80 to 14.90 north). The official shelter at 15.017163, 120.948071 is outside it, so addresses near the shelter are refused for transport, rescue and delivery.
+- The shelter address is still unconfirmed and transport pricing is still empty.
+
 Review pass P0, 2026-10-12 (local, not deployed). Findings and changes:
 
 - The open `DEPLOYMENT_SCHEMA_MISMATCH` signals (17, sources shop and account) were all recorded between 00:13 and 00:14 Manila time on 12 Oct, when code needing migration 018 ran before 018 was applied. No migration is missing: the live schema is at 018 with 019 applied. They were resolved with notes through the review endpoint. One `RENDER_ERROR` browser signal from 11 Oct remains open for review.
@@ -113,7 +123,7 @@ Stripe is in test mode and the connected account is not activated for real charg
 The database holds demonstration records created on 2026-10-11 through the application itself: 10 products, 6 pets, 3 service zones, 5 orders, 3 adoption applications, 5 stray reports, 2 transport requests, 4 donations, a volunteer with tasks, expenses, and eleven demo accounts (one per role, `<role>@pawsconnect.test`).
 
 - Products and pets say "Demo listing" or "Demo profile" in their descriptions.
-- The three service zones are a plain rectangle around Malolos named "Demo ... zone". They are not verified service boundaries.
+- The three service zones are a plain rectangle around Malolos named "Malolos area ... zone (sample boundary)". They are not verified service boundaries.
 - Payments are Stripe test-mode payments. No money moved.
 - From the verification run there is also one pending refund request, one rejected elevated-access request, and one inquiry reply.
 
@@ -169,7 +179,7 @@ Setup, migration order, controls and rollback limitations are in [OPERATIONS.md]
 
 ## Shelter transport from the official shelter (2026-10-12)
 
-Every shelter transport request starts at the shelter and the customer only chooses the destination. Pushed to GitHub; **not deployed, and migration 021 is not applied to the live database yet**. Apply `supabase/APPLY_021.sql` first, then deploy. Verified by automated tests only (292 unit, API and database; 162 browser checks at phone, tablet and desktop size); it has not been clicked through against the live database because that needs 021.
+Every shelter transport request starts at the shelter and the customer only chooses the destination. Migrations 020 and 021 are applied to the live database and the code is deployed (confirmed 2026-10-12, see the database check at the top). Verified by automated tests (292 unit, API and database; 162 browser checks at phone, tablet and desktop size) and by read-only checks of the live schema; it has not been clicked through by hand on the live site.
 
 What was built, step by step:
 
@@ -192,15 +202,15 @@ What was built, step by step:
 
 Needed from the owner before this is usable live:
 
-1. Apply migration 021, then deploy.
-2. Enter real transport service zones. Until then every destination is outside the delivery area.
+1. Done: migration 021 is applied and the code is deployed.
+2. Enter real transport service zones. The only zones are a sample rectangle around Malolos, so every destination outside it is refused.
 3. Confirm the shelter's address (Settings → Shelter location).
 4. Enter pricing (Settings → Transport pricing) if customers should see estimates.
 5. Optionally point `OSRM_URL` at a hosted routing service; the default is a public demonstration server. The Alternative request tab still uses the older picker with coordinate inputs.
 
 One thing that holds until real zones exist:
 
-- `check_service_eligibility` deliberately ignores zones whose name or source starts with "demo" (migration 010), and the three demo zones are the only zones. The live site therefore has no transport, rescue or delivery coverage anywhere until real zones are entered.
+- `check_service_eligibility` deliberately ignores zones whose name or source starts with "demo" (migration 010), The three zones were renamed "(sample boundary)" on 2026-10-12, so they now count: coverage exists inside the Malolos rectangle and nowhere else until real zones are entered.
 
 ## Not built
 

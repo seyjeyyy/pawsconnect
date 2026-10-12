@@ -129,7 +129,7 @@ The production database holds **demo data**, created through the API as each dem
 
 - Eleven demo accounts exist, one per role including `super.administrator` (only one, so an elevated-access request cannot be approved in the demo without creating a second), as `<role>@pawsconnect.test` (dots for underscores). Ask the project owner for the password; it is not in the repository.
 - The security log holds 42 refusals and five resolved alerts from the verification runs on 2026-10-11, and there is one rejected elevated-access request and one pending refund request from the same runs. They are real records of that run, not seeded examples.
-- The three service zones are a plain rectangle around Malolos named "Demo ... zone". They are not real boundaries.
+- The three service zones are a plain rectangle around Malolos named "Malolos area ... zone (sample boundary)". They are not real boundaries, and the official shelter is outside them.
 - Local development uses the same database as the live site. Anything you create or delete locally is created or deleted in production. There is no separate development database.
 
 ## Do not
