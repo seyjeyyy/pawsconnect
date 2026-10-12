@@ -7,6 +7,7 @@ import { uuid } from '../../utils/validation.js';
 import { point } from '../../utils/validation.js';
 import { coverageBlock, planTransport } from './service.js';
 import { estimateTransport } from './estimate.js';
+import { transportDetail } from './detail.js';
 export const transportRouter = Router();
 transportRouter.use(authenticate);
 // What the customer tells us. Everything about the pickup, the route, coverage and price is worked out here, not sent in.
@@ -64,10 +65,10 @@ transportRouter.post('/transport/requests', async (req, res) => {
   res.status(201).json({ data, meta: { reference: data.reference, message: 'The shelter must review availability, handling requirements, and the route before confirming.' } });
 });
 transportRouter.get('/transport/requests/mine', async (req, res) => {
-  res.json({ data: assertDb(await db().from('transport_requests').select('*,transport_quotes(*),transport_tracking_events(*),transport_handovers(*)').eq('user_id', req.actor!.id).order('created_at', { ascending: false })) });
+  res.json({ data: assertDb(await db().from('transport_requests').select('id,reference,user_id,status,coverage_status,pet_details,pet_name,pet_species,pet_weight_kg,dropoff_address,dropoff_city,preferred_schedule,confirmed_schedule,route_distance_km,route_duration_minutes,estimate_total_centavos,fee_centavos,paid_at,driver_id,vehicle_id,shelter_location_id,created_at,updated_at,transport_quotes(id,amount_centavos,expires_at,accepted_at,created_at)').eq('user_id', req.actor!.id).order('created_at', { ascending: false })) });
 });
 transportRouter.get('/transport/requests/:id', async (req, res) => {
-  res.json({ data: assertDb(await db().from('transport_requests').select('*,transport_quotes(*),transport_tracking_events(*),transport_handovers(*)').eq('id', uuid.parse(req.params.id)).eq('user_id', req.actor!.id).single()) });
+  res.json({ data: await transportDetail(uuid.parse(req.params.id), 'customer', req.actor!.id) });
 });
 transportRouter.post('/transport/requests/:id/confirm', async (req, res) => {
   res.json({ data: assertDb(await db().rpc('transition_transport', { p_actor_id: req.actor!.id, p_request_id: uuid.parse(req.params.id), p_status: 'confirmed' })) });

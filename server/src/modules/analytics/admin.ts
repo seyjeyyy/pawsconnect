@@ -8,6 +8,7 @@ import { connectedAdminRouter } from './connected.js';
 import { workspacePermissions } from '../../middleware/permissions.js';
 import { emailOwner, pesos, readable } from '../../integrations/email.js';
 import { forgetTransportSettings } from '../transport/service.js';
+import { transportDetail } from '../transport/detail.js';
 
 export const adminRouter = Router();
 // Administrators and shelter staff reach every route in this router. Field
@@ -16,12 +17,12 @@ export const adminRouter = Router();
 // and the actions listed under `write`. The database functions behind those
 // actions check again that the actor is the assigned person.
 const recordId = '[0-9a-f-]{36}';
-const fieldAccess: Record<string, { read: string[]; write: RegExp[] }> = {
+const fieldAccess: Record<string, { read: string[]; readOne?: RegExp; write: RegExp[] }> = {
   veterinarian: { read: ['pets', 'health', 'intake', 'lookups/pets'], write: [/^POST \/health$/, new RegExp(`^PATCH /pets/${recordId}/behavior$`)] },
   rescue_personnel: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
   // Approved volunteers can be assigned to a rescue by staff.
   volunteer: { read: ['rescue'], write: [new RegExp(`^PATCH /rescue/${recordId}/status$`)] },
-  shelter_driver: { read: ['transport'], write: [new RegExp(`^PATCH /transport/${recordId}/status$`)] },
+  shelter_driver: { read: ['transport'], readOne: new RegExp(`^/transport/${recordId}$`), write: [new RegExp(`^PATCH /transport/${recordId}/status$`)] },
 };
 // System administration: accounts and access, the audit trail and the security centre.
 // Only the super administrator reaches these, and they are all the super administrator
@@ -51,7 +52,7 @@ export const workspaceAccess: RequestHandler = (req, _res, next) => {
   const grants = roles.flatMap(role => fieldAccess[role] ? [fieldAccess[role]] : []);
   const path = req.path.replace(/\/+$/, '');
   const allowed = req.method === 'GET'
-    ? grants.some(grant => grant.read.includes(path.slice(1)))
+    ? grants.some(grant => grant.read.includes(path.slice(1)) || grant.readOne?.test(path))
     : grants.some(grant => grant.write.some(pattern => pattern.test(`${req.method} ${path}`)));
   if (!allowed) throw new ApiError(403, 'FORBIDDEN', 'This action requires an authorized shelter role.');
   next();
@@ -76,7 +77,8 @@ const resources: Record<string, { table: string; search?: string; order: string;
   pets: { table: 'pets', search: 'name', order: 'created_at', select: '*,pet_behavior_profiles(*)' },
   adoptions: { table: 'adoption_applications', order: 'created_at', select: '*,pets(name,image_url),profiles(full_name),adoption_appointments(*)' },
   rescue: { table: 'stray_reports', search: 'description', order: 'created_at', select: '*,stray_report_photos(*),rescue_assignments(*),rescue_events(*)' },
-  transport: { table: 'transport_requests', search: 'pet_details', order: 'created_at', select: '*,transport_quotes(*),transport_tracking_events(*),transport_handovers(*)' },
+  // The list carries what a row shows; the route line and the rest come with the detail.
+  transport: { table: 'transport_requests', search: 'pet_details', order: 'created_at', select: 'id,reference,user_id,status,coverage_status,pet_details,pet_name,pet_species,pet_weight_kg,dropoff_address,dropoff_city,preferred_schedule,confirmed_schedule,route_distance_km,route_duration_minutes,estimate_total_centavos,fee_centavos,paid_at,driver_id,vehicle_id,shelter_location_id,created_at,updated_at' },
   alternatives: { table: 'alternative_transport_requests', search: 'details', order: 'created_at' },
   zones: { table: 'service_zones', search: 'name', order: 'created_at' }, vehicles: { table: 'shelter_vehicles', search: 'name', order: 'name' },
   drivers: { table: 'shelter_drivers', order: 'created_at', key: 'user_id' }, donations: { table: 'donations', order: 'created_at' },
@@ -161,19 +163,40 @@ adminRouter.post('/rescue/:id/assign', async (req, res) => {
   const input = z.object({ assignee_id: uuid, notes: z.string().max(2000).optional() }).strict().parse(req.body);
   res.status(201).json({ data: assertDb(await db().rpc('assign_rescue', { p_actor_id: req.actor!.id, p_report_id: uuid.parse(req.params.id), p_assignee_id: input.assignee_id, p_notes: input.notes ?? null })) });
 });
+// One booking for the detail screen. Staff get everything; a driver gets only a job assigned to them, without prices or staff notes.
+adminRouter.get('/transport/:id', async (req, res) => {
+  res.json({ data: await transportDetail(uuid.parse(req.params.id), isStaff(req.actor!.roles) ? 'staff' : 'driver', req.actor!.id) });
+});
+// Notes for staff only. They are never shown to the customer or the driver, and cannot be edited afterwards.
+adminRouter.post('/transport/:id/notes', async (req, res) => {
+  const { note } = z.object({ note: z.string().trim().min(2).max(2000) }).strict().parse(req.body);
+  const id = uuid.parse(req.params.id);
+  assertDb(await db().from('transport_requests').select('id').eq('id', id).single());
+  res.status(201).json({ data: assertDb(await db().from('transport_internal_notes').insert({ transport_request_id: id, author_id: req.actor!.id, note }).select('id,note,created_at').single()) });
+});
+// The in-app notification is written by the database when the status changes; this adds the email, when email is configured.
+const transportEmail = (id: string, subject: (reference: string) => string, lines: (reference: string) => string[]) =>
+  emailOwner<{ user_id: string; reference: string }>(() => db().from('transport_requests').select('user_id,reference').eq('id', id).maybeSingle(), request => ({ subject: subject(request.reference), lines: lines(request.reference), link: { label: 'View your transport requests', path: '/account/transport' } }));
 adminRouter.patch('/transport/:id/status', async (req, res) => {
   const input = z.object({ status: z.enum(['under_review', 'picked_up', 'in_transit', 'arrived', 'completed', 'declined', 'cancelled']), notes: z.string().max(2000).optional() }).strict().parse(req.body);
-  res.json({ data: assertDb(await db().rpc('transition_transport', { p_actor_id: req.actor!.id, p_request_id: uuid.parse(req.params.id), p_status: input.status, p_notes: input.notes ?? null })) });
+  const id = uuid.parse(req.params.id);
+  const data = assertDb(await db().rpc('transition_transport', { p_actor_id: req.actor!.id, p_request_id: id, p_status: input.status, p_notes: input.notes ?? null }));
+  transportEmail(id, reference => `Your pet transport ${reference} is now ${readable(input.status)}`, reference => [`Your PawsConnect pet transport request ${reference} has been updated to: ${readable(input.status)}.`]);
+  res.json({ data });
 });
 adminRouter.patch('/transport/:id/assignment', async (req, res) => {
   const input = z.object({ driver_id: uuid, vehicle_id: uuid, confirmed_schedule: z.string().datetime({ offset: true }).refine(v => Date.parse(v) > Date.now()) }).strict().parse(req.body);
   const id = uuid.parse(req.params.id);
   const data = assertDb(await db().rpc('schedule_transport', { p_actor_id: req.actor!.id, p_request_id: id, p_driver_id: input.driver_id, p_vehicle_id: input.vehicle_id, p_schedule: input.confirmed_schedule }));
+  transportEmail(id, reference => `Your pet transport ${reference} is scheduled`, reference => [`Your PawsConnect pet transport request ${reference} has been scheduled for ${new Intl.DateTimeFormat('en-PH', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Manila' }).format(new Date(input.confirmed_schedule))} (Philippine time).`, 'A shelter driver has been assigned. You can follow the trip in your account.']);
   res.json({ data: { ...data, confirmed_schedule: input.confirmed_schedule } });
 });
 adminRouter.post('/transport/:id/quote', async (req, res) => {
   const input = z.object({ amount_centavos: money, breakdown: z.record(z.unknown()).default({}), expires_at: z.string().datetime({ offset: true }) }).strict().parse(req.body);
-  res.status(201).json({ data: assertDb(await db().rpc('create_transport_quote', { p_actor_id: req.actor!.id, p_request_id: uuid.parse(req.params.id), p_amount_centavos: input.amount_centavos, p_breakdown: input.breakdown, p_expires_at: input.expires_at })) });
+  const id = uuid.parse(req.params.id);
+  const data = assertDb(await db().rpc('create_transport_quote', { p_actor_id: req.actor!.id, p_request_id: id, p_amount_centavos: input.amount_centavos, p_breakdown: input.breakdown, p_expires_at: input.expires_at }));
+  transportEmail(id, reference => `Your quotation for pet transport ${reference}`, reference => [`The shelter has sent a quotation of ${pesos(input.amount_centavos)} for your pet transport request ${reference}.`, 'Nothing is charged until you accept it in your account.']);
+  res.status(201).json({ data });
 });
 adminRouter.post('/transport/:id/handover', async (req, res) => {
   const input = z.object({ recipient_name: z.string().min(2).max(120), notes: z.string().min(5).max(2000) }).strict().parse(req.body);
@@ -261,7 +284,7 @@ adminRouter.get('/:resource', async (req, res) => {
   if (resource.admin && !req.actor!.roles.includes('administrator')) throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
   if (req.query.export === 'true') assertDb(await db().rpc('authorize_workspace_export',{p_actor_id:req.actor!.id}));
   const { page, limit, q } = pagination.parse(req.query);
-  const { status, sort, direction } = z.object({ status: z.string().max(50).optional(), sort: z.enum(['created_at', 'name', 'status']).optional(), direction: z.enum(['asc', 'desc']).default('desc') }).parse(req.query);
+  const { status, sort, direction, coverage, date } = z.object({ status: z.string().max(50).optional(), sort: z.enum(['created_at', 'name', 'status']).optional(), direction: z.enum(['asc', 'desc']).default('desc'), coverage: z.enum(['within_coverage', 'outside_coverage', 'temporarily_unavailable', 'manual_review_required']).optional(), date: z.string().date().optional() }).parse(req.query);
   let query = db().from(resource.table).select(resource.select ?? '*', { count: 'exact' });
   if (!isStaff(req.actor!.roles)) {
     // Field roles see only the work assigned to them.
@@ -272,11 +295,20 @@ adminRouter.get('/:resource', async (req, res) => {
       query = query.in('id', assignments.map(assignment => assignment.report_id));
     }
   }
-  if (q && resource.search) query = query.ilike(resource.search, `%${safeSearch(q)}%`);
+  if (key === 'transport') {
+    // A day means that day in the Philippines, by preferred schedule.
+    if (coverage) query = query.eq('coverage_status', coverage);
+    if (date) query = query.gte('preferred_schedule', `${date}T00:00:00+08:00`).lt('preferred_schedule', new Date(Date.parse(`${date}T00:00:00+08:00`) + 86_400_000).toISOString());
+    if (q && safeSearch(q)) query = query.or(`reference.ilike.%${safeSearch(q)}%,pet_details.ilike.%${safeSearch(q)}%,dropoff_address.ilike.%${safeSearch(q)}%`);
+  }
+  else if (q && resource.search) query = query.ilike(resource.search, `%${safeSearch(q)}%`);
   if (status && ['orders', 'pets', 'adoptions', 'rescue', 'transport', 'alternatives', 'donations', 'volunteers', 'payments', 'contact_messages'].includes(key)) query = query.eq('status', status);
   const allowedSort = sort === resource.order || sort === resource.search || (sort === 'status' && ['orders','pets','adoptions','rescue','transport','donations','volunteers','payments'].includes(key));
   const result = await query.order(sort && allowedSort ? sort : resource.order, { ascending: direction === 'asc' }).order(resource.key ?? 'id', {ascending: direction === 'asc'}).range((page - 1) * limit, page * limit - 1);
-  res.json({ data: assertDb(result), meta: { total: result.count, page, limit } });
+  let data = assertDb<Record<string, unknown>[]>(result);
+  // A driver's job list carries the trip, not what the customer is paying.
+  if (key === 'transport' && !isStaff(req.actor!.roles)) data = data.map(({ fee_centavos: _fee, paid_at: _paid, estimate_total_centavos: _estimate, ...job }) => job);
+  res.json({ data, meta: { total: result.count, page, limit } });
 });
 adminRouter.post('/:resource', async (req, res) => {
   const key = z.string().parse(req.params.resource), schema = schemas[key], resource = resources[key];

@@ -151,3 +151,35 @@ describe('transport pricing settings', () => {
     expect((await one("select count(*)::int n from public.audit_logs where action='transport_settings.updated'")).n).toBe(2);
   });
 });
+
+describe('staff notes and the audit trail', () => {
+  it('keeps staff notes away from every browser session, including the customer and the driver', async () => {
+    const saved = await book(covered);
+    await db.query("insert into public.transport_internal_notes(transport_request_id,author_id,note) values($1,$2,'Customer asked about a discount.')", [saved.id, staff]);
+    for (const reader of [customer, driver, staff, admin, system]) await expect(asUser(db, reader, tx => tx.query('select * from public.transport_internal_notes')), reader).rejects.toThrow(/permission denied/);
+    await expect(asUser(db, staff, tx => tx.query("insert into public.transport_internal_notes(transport_request_id,author_id,note) values($1,$2,'From a browser')", [saved.id, staff]))).rejects.toThrow(/permission denied/);
+    await expect(db.query("insert into public.transport_internal_notes(transport_request_id,author_id,note) values($1,$2,' ')", [saved.id, staff])).rejects.toThrow();
+  });
+  it('records quotations, assignments and every status change', async () => {
+    const saved = await book(covered);
+    await db.query("select public.transition_transport($1,$2,'under_review')", [staff, saved.id]);
+    await db.query("select public.create_transport_quote($1,$2,0,'{}',now()+interval '1 day')", [staff, saved.id]);
+    await db.query("select public.transition_transport($1,$2,'confirmed')", [customer, saved.id]);
+    await db.query("select public.schedule_transport($1,$2,$3,$4,now()+interval '3 days')", [staff, saved.id, driver, vehicle]);
+    // While that trip is active, the same driver and vehicle cannot be given another.
+    const second = await book(covered);
+    await db.query("select public.transition_transport($1,$2,'under_review')", [staff, second.id]);
+    await db.query("select public.create_transport_quote($1,$2,0,'{}',now()+interval '1 day')", [staff, second.id]);
+    await db.query("select public.transition_transport($1,$2,'confirmed')", [customer, second.id]);
+    await expect(db.query("select public.schedule_transport($1,$2,$3,$4,now()+interval '3 days')", [staff, second.id, driver, vehicle])).rejects.toThrow(/already assigned/);
+    expect((await db.query("select 1 from public.audit_logs where entity_id=$1 and action='transport.assigned'", [second.id])).rows).toHaveLength(0);
+    const actions = (await db.query<any>("select action,actor_id,details from public.audit_logs where entity_id=$1 order by created_at", [saved.id])).rows;
+    expect(actions.map(row => row.action)).toEqual(['transport.transition', 'transport.quoted', 'transport.transition', 'transport.transition', 'transport.assigned']);
+    expect(actions.at(-1)).toMatchObject({ actor_id: staff, details: { driver_id: driver, vehicle_id: vehicle } });
+    expect(actions[1].details).toMatchObject({ amount_centavos: 0 });
+    // Each step is timestamped where the customer, staff and driver can all read it.
+    const events = (await db.query<any>('select status,created_at from public.transport_tracking_events where transport_request_id=$1 order by created_at', [saved.id])).rows;
+    expect(events.map(row => row.status)).toEqual(['under_review', 'quoted', 'confirmed', 'scheduled']);
+    expect(events.every(row => row.created_at)).toBe(true);
+  });
+});

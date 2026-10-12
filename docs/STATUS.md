@@ -167,9 +167,11 @@ The hosted checks above describe the earlier release through migration 014. The 
 
 Setup, migration order, controls and rollback limitations are in [OPERATIONS.md](OPERATIONS.md).
 
-## Shelter transport from the official shelter (in progress, not deployed)
+## Shelter transport from the official shelter (2026-10-12)
 
-A ten-step change so that every shelter transport request starts at the shelter and the customer only chooses the destination. Done so far:
+Every shelter transport request starts at the shelter and the customer only chooses the destination. Pushed to GitHub; **not deployed, and migration 021 is not applied to the live database yet**. Apply `supabase/APPLY_021.sql` first, then deploy. Verified by automated tests only (292 unit, API and database; 162 browser checks at phone, tablet and desktop size); it has not been clicked through against the live database because that needs 021.
+
+What was built, step by step:
 
 - **Step 1, official shelter location (migration 020, not yet applied to the live database).** One record in `shelter_locations` (`PAWSCONNECT_MAIN_SHELTER`, 15.017163, 120.948071) is the only place the shelter's coordinates and address live. `GET /api/shelter-location` is public and cached for a minute; `server/src/modules/shelter/location.ts` exports `shelterLocation()` for other modules. It is changed only by `update_shelter_location`, which an administrator holding the zones module or the super administrator may call through `PUT /api/settings/shelter-location`; each change needs a reason and writes the before and after values to the audit trail. The address starts empty: the settings screen (Workspace → Settings → Shelter location) offers a suggestion from the map service, and saving an address is what confirms it. No other shelter coordinate or street address existed in the code to remove.
 - This is the one screen both lines of authority can open. It does not give the super administrator any other shelter route.
@@ -180,11 +182,21 @@ A ten-step change so that every shelter transport request starts at the shelter 
 
 - **Step 4, routing and geocoding.** The owner chose to stay on the public OpenStreetMap services (OSRM for routes, Nominatim for addresses) rather than OpenRouteService; `OSRM_URL` and `NOMINATIM_URL` can point elsewhere without a code change. Road distance is the routing service's own figure, never straight-line, and a failure is reported as a failure. Route answers are cached for 30 minutes, address searches and reverse lookups for a day. Address search runs only on the "Find address" button. Leaflet is its own chunk, loaded when a map is about to be shown, including for the older picker used by the Rescue, Checkout and Alternative request forms (`LocationPicker.tsx` is now a lazy wrapper around `LocationPickerMap.tsx`). Every map re-measures itself when its box changes, which fixes maps that drew grey.
 
-- **Step 5, coverage (migration 021, NOT yet applied to the live database; it is still being added to through step 9).** A booking that starts at the official shelter (`shelter_location_id` set) is classified by its destination only: the transport service zones first, then the optional `transport_settings.max_distance_km`. `server/src/modules/transport/service.ts` works this out for both the preview and the submission. A destination outside the area, or in a paused zone, is refused by the API (409 `OUTSIDE_COVERAGE` / `COVERAGE_PAUSED`) and again by the database trigger; the form disables Submit and offers "Send an Alternative request", which opens that tab with the destination filled in. A zone marked for manual review still accepts the request. Bookings made before 021, with a customer-typed pickup, keep the both-ends rule. Nothing is ever auto-confirmed: every request starts as `submitted` and only staff move it on. Migration 021 also adds the booking columns for step 9 (reference `PT-…`, pickup snapshot, destination parts, contact, pet, route distance and time, estimate) and an empty `transport_settings` row.
+- **Step 5, coverage (migration 021, not yet applied to the live database).** A booking that starts at the official shelter (`shelter_location_id` set) is classified by its destination only: the transport service zones first, then the optional `transport_settings.max_distance_km`. `server/src/modules/transport/service.ts` works this out for both the preview and the submission. A destination outside the area, or in a paused zone, is refused by the API (409 `OUTSIDE_COVERAGE` / `COVERAGE_PAUSED`) and again by the database trigger; the form disables Submit and offers "Send an Alternative request", which opens that tab with the destination filled in. A zone marked for manual review still accepts the request. Bookings made before 021, with a customer-typed pickup, keep the both-ends rule. Nothing is ever auto-confirmed: every request starts as `submitted` and only staff move it on. Migration 021 also adds the booking columns for step 9 (reference `PT-…`, pickup snapshot, destination parts, contact, pet, route distance and time, estimate) and an empty `transport_settings` row.
 
 - **Step 6, estimate.** `transport_settings` holds a base fee, a rate per kilometre, handling fees by species and by weight band, surcharges and the optional distance limit, all empty until an administrator enters them at Workspace → Settings → Transport pricing (`update_transport_settings`: administrator with the transport module, reason required, before and after in the audit trail). `server/src/modules/transport/estimate.ts` is the arithmetic: base fee + road km × rate + the fees that apply. With no base fee or rate there is no estimate and the form says staff will send a quote. The server calculates the estimate for the preview and again on submit, and saves it on the booking (`estimate_breakdown`, `estimate_total_centavos`). The final price is still the staff quotation (`fee_centavos`).
 
-Still to do: submit, staff and driver views (steps 7–10). The Alternative request tab still uses the older picker with coordinate inputs.
+- **Step 7, submit and status.** On submit the API checks the session, validates the pet, schedule and destination, loads the shelter record, recalculates route, coverage and estimate from the destination alone, saves the booking with its pickup snapshot, and returns the reference (`PT-…`). The first status is the existing `submitted`. No status was added: the driver's "Delivered" button records the existing `arrived`, and `completed` still needs the staff-recorded handover. Transitions are enforced by `transition_transport` in the database. The customer gets the existing in-app notification on every status change, and an email on status changes, quotations and scheduling once Resend is configured (it is not yet).
+- **Step 8, staff and driver screens.** `client/src/pages/transport/TransportWorkspace.tsx` replaces the generic table for the Transport section. Staff: filters for status, date and coverage, search by reference, pet or destination, export, and a booking screen with the route map, distance, time, estimate, coverage, the final quote, driver and vehicle assignment, status changes, internal notes (`transport_internal_notes`, staff only) and history. Driver (My transport jobs): only their own jobs, the trip and the customer contact, "Open in Google Maps" with driving directions, and one large next-step button (Picked up, In transit, Delivered), each recorded with its time. Drivers are sent no prices and no staff notes. `GET /api/admin/transport/:id` and `server/src/modules/transport/detail.ts` shape the booking per viewer; the customer's account uses the same view.
+- **Step 9, database.** All in migration 021; see step 5. Bookings made before it keep their saved pickup. Two such bookings exist live (`b209f6c9`, `f5db3f09`), both with a pickup in Malolos that is not the official shelter; they were left unchanged for the owner to review.
+
+Needed from the owner before this is usable live:
+
+1. Apply migration 021, then deploy.
+2. Enter real transport service zones. Until then every destination is outside the delivery area.
+3. Confirm the shelter's address (Settings → Shelter location).
+4. Enter pricing (Settings → Transport pricing) if customers should see estimates.
+5. Optionally point `OSRM_URL` at a hosted routing service; the default is a public demonstration server. The Alternative request tab still uses the older picker with coordinate inputs.
 
 One thing that holds until real zones exist:
 
@@ -194,9 +206,10 @@ One thing that holds until real zones exist:
 
 - Refunds stop at the request. A customer can ask and staff can see it; nothing calls Stripe to refund, and there is no approve or decline action.
 - Store: product variants in the storefront (the database and checkout support them), shipment tracking entry.
-- Workspace: no map-based zone editor (zones are pasted as GeoJSON), no rescue or transport map.
-- Notifications reach open pages over Realtime. Email (Resend), SMS and push are not wired.
-- The route preview shows distance and time but does not draw the route.
+- Workspace: no map-based zone editor (zones are pasted as GeoJSON), no rescue map.
+- Notifications reach open pages over Realtime. Email is built (Resend) but sends nothing until its keys are set; SMS and push are not wired.
+- Pets have no weight on record, so a transport request cannot prefill it.
+- The Alternative transport request form still uses the older picker with coordinate inputs.
 - Recurring donations: not offered.
 - Full accessibility audit and load testing. Targeted tour/focus/responsive checks and a local CI workflow are now included; the workflow has not yet run on GitHub.
 

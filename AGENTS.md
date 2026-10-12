@@ -81,6 +81,10 @@ The server uses the service role, which bypasses RLS. Every query for a user's o
 
 **System administration and shelter operations are separate, and neither role implies the other** (migration 014). `has_role` means exactly the roles asked for; `authorize` has no implication; `isStaff` is administrator and shelter staff only; `isSystemAdministrator` is the super administrator. In `workspaceAccess`, the `systemAccess` list is reachable only by the super administrator and is all the super administrator can reach. Do not reintroduce "the super administrator can do everything": it was removed on purpose.
 
+One screen is shared by both lines of authority on purpose: Settings → Shelter location, the single record of where the shelter is (`shelter_locations`, read through `shelterLocation()` in `server/src/modules/shelter/location.ts`). Never write the shelter's coordinates or address anywhere else. It gives the super administrator no other shelter route.
+
+Shelter transport always starts at that record. The browser sends only the destination; pickup, road distance, coverage and the estimate are worked out in `server/src/modules/transport/service.ts` and saved on the booking. Never accept any of them from a request body.
+
 Roles are assigned only by the super administrator. Granting or removing `administrator` or `super_administrator` cannot be done directly even by them: one super administrator files a request (`critical_approvals`) and a different super administrator decides it, so it needs two. The first administrator and the first super administrator are granted by inserting into `user_roles` in SQL.
 
 ## Security events
@@ -135,9 +139,9 @@ See "Not built" in [docs/STATUS.md](docs/STATUS.md). The ones most likely to mat
 
 - Refunds stop at the request: a customer can ask and staff can see it, but nothing calls Stripe to refund, and there is no approve or decline action.
 - Security monitoring has one rule (repeated refusals). Sign-in attempts are not imported from Supabase Auth, so failed logins are not visible.
-- No map-based zone editor (zones are pasted as GeoJSON), no rescue or transport map.
+- No map-based zone editor (zones are pasted as GeoJSON), no rescue map.
 - The upload and staff forms added in the second pass were verified through the API and by loading each screen; they have not each been clicked through by hand in a browser.
-- Notifications reach open pages over Realtime; there is no email or SMS.
+- Notifications reach open pages over Realtime. Email is built (Resend) but sends nothing until its keys are set; there is no SMS.
 - No product variants in the storefront.
 - The Edge Function in `supabase/functions/maintenance` is not deployed and not needed while `pg_cron` runs the expiry jobs.
 - `client/public/images/hero-dog.jpg` has no recorded source or licence.

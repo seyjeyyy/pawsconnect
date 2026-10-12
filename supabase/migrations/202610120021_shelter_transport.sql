@@ -113,4 +113,31 @@ declare v_before public.transport_settings; v_after public.transport_settings; b
 end $$;
 revoke execute on function public.update_transport_settings(uuid, numeric, bigint, bigint, jsonb, jsonb, text) from public, anon, authenticated;
 grant execute on function public.update_transport_settings(uuid, numeric, bigint, bigint, jsonb, jsonb, text) to service_role;
+
+-- ---------- Staff notes ----------
+-- Written and read through the API by shelter staff only. Never shown to the customer or the
+-- driver, which is why they are not tracking events (those are visible to both).
+create table public.transport_internal_notes (
+  id uuid primary key default gen_random_uuid(),
+  transport_request_id uuid not null references public.transport_requests,
+  author_id uuid not null references public.profiles,
+  note text not null check(length(trim(note)) between 2 and 2000),
+  created_at timestamptz not null default now()
+);
+create index transport_internal_notes_request_idx on public.transport_internal_notes(transport_request_id, created_at);
+alter table public.transport_internal_notes enable row level security;
+revoke all on public.transport_internal_notes from public, anon, authenticated;
+grant all on public.transport_internal_notes to service_role;
+create policy active_app_session on public.transport_internal_notes as restrictive for all to authenticated using(public.current_session_allowed()) with check(public.current_session_allowed());
+
+-- Scheduling records who was assigned, not only that the status changed.
+create or replace function public.schedule_transport(p_actor_id uuid,p_request_id uuid,p_driver_id uuid,p_vehicle_id uuid,p_schedule timestamptz)
+returns public.transport_requests language plpgsql security definer set search_path=public,pg_temp as $$
+declare v public.transport_requests; begin
+ if p_schedule<=now() then raise exception 'Choose a future schedule'; end if;
+ select * into v from public.transition_transport(p_actor_id,p_request_id,'scheduled',null,p_driver_id,p_vehicle_id);
+ update public.transport_requests set confirmed_schedule=p_schedule where id=p_request_id returning * into v;
+ insert into public.audit_logs(actor_id,action,entity_type,entity_id,details) values(p_actor_id,'transport.assigned','transport_request',p_request_id,jsonb_build_object('driver_id',p_driver_id,'vehicle_id',p_vehicle_id,'confirmed_schedule',p_schedule));
+ return v;
+end $$;
 notify pgrst, 'reload schema';

@@ -58,6 +58,47 @@
   .transport-guest ul { margin: 0; padding-left: 1.2rem; }
 
   .transport-toolbar { margin-bottom: 1.25rem; }
+
+  /* Workspace: list of bookings, and one booking with its actions. */
+  .transport-filters { align-items: flex-end; }
+  .transport-jobs { display: grid; gap: 0.75rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+  .transport-job { display: grid; gap: 0.35rem; width: 100%; text-align: left; color: var(--ink); cursor: pointer; }
+  .transport-job:hover { border-color: var(--navy); }
+  .transport-job-head, .transport-job-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.9rem; }
+  .transport-job-head strong { font-size: 1.05rem; color: var(--navy); }
+  .transport-job-pet { font-weight: 650; }
+  .transport-job-line { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 0.5rem; overflow-wrap: anywhere; }
+  .transport-job-line > span { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding-top: 0.2rem; }
+  .transport-job-foot { justify-content: flex-start; margin-top: 0.25rem; font-size: 0.9rem; color: var(--muted); }
+  .transport-job-open { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; font-weight: 650; color: var(--navy); }
+  .transport-pages { justify-content: center; margin-top: 1.25rem; }
+  .transport-booking { display: grid; gap: 1rem; min-width: 0; }
+  .transport-booking > .text-button { justify-self: start; }
+  .transport-booking-layout { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .transport-actions, .transport-detail { display: grid; gap: 1.25rem; min-width: 0; }
+  .transport-detail h3, .transport-actions h3 { display: flex; align-items: center; gap: 0.45rem; margin: 0 0 0.75rem; }
+  .transport-detail h4, .transport-actions h4 { margin: 0; font-size: 0.95rem; color: var(--navy); }
+  .transport-detail-route { display: grid; gap: 1rem; }
+  .transport-detail-route > h3 { margin: 0; }
+  .transport-detail-route > .btn { justify-self: start; }
+  .transport-recap-plain { padding-top: 0; border-top: 0; }
+  .transport-estimate-flush { margin: 0 0 1rem; }
+  .transport-prose { white-space: pre-wrap; overflow-wrap: anywhere; }
+  span.transport-prose { display: block; }
+  .transport-history, .transport-steps, .transport-notes-list { display: grid; gap: 0.6rem; margin: 0; padding: 0; list-style: none; }
+  .transport-history > li, .transport-steps > li { display: flex; justify-content: space-between; gap: 1rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--line); }
+  .transport-history > li:last-child, .transport-steps > li:last-child { border-bottom: 0; padding-bottom: 0; }
+  .transport-history time, .transport-steps time { flex: none; font-size: 0.85rem; color: var(--muted); text-align: right; }
+  .transport-steps > li.done > span { font-weight: 700; color: var(--green-dark); }
+  .transport-staff, .transport-driver { display: grid; gap: 0.9rem; }
+  .transport-staff > h3, .transport-driver > h3 { margin: 0; }
+  .transport-staff > .btn, .transport-note-form > .btn { justify-self: start; }
+  .transport-note-form { display: grid; gap: 0.6rem; }
+  .transport-notes-list > li { padding: 0.7rem 0.85rem; background: var(--cream); border-radius: 12px; }
+  .transport-notes-list p { margin: 0 0 0.2rem; }
+  /* A driver uses this on a phone, one-handed: the next step is the biggest thing on the screen. */
+  .transport-big { width: 100%; min-height: 56px; justify-content: center; font-size: 1.05rem; }
+  @media (min-width: 1100px) { .transport-booking-layout { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); } .transport-booking-layout > .transport-actions { grid-column: 2; grid-row: 1; position: sticky; top: 1rem; } .transport-booking-layout > .transport-detail { grid-column: 1; grid-row: 1; } }
   .transport-notes { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); margin-top: 2rem; }
 
   @media (min-width: 640px) { .transport-pickup { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
